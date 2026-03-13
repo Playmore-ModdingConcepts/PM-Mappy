@@ -8,7 +8,7 @@
 #include "com_utils.hpp"
 #include "hook_manager.hpp"
 
-extern std::shared_mutex g_d3d12_adapter_mutex;
+extern std::shared_mutex g_adapter_mutex;
 
 // Monster Hunter Rise calls 'ID3D12Device::CopyDescriptorsSimple' on a device queried from a resource
 // This crashes if that device pointer is not pointing to the proxy device, due to our modified descriptor handles, so need to make sure that is the case
@@ -21,13 +21,15 @@ HRESULT STDMETHODCALLTYPE ID3D12Resource_GetDevice(ID3D12Resource *pResource, RE
 	const auto device = static_cast<ID3D12Device *>(*ppvDevice);
 	assert(device != nullptr);
 
-	const std::unique_lock<std::shared_mutex> lock(g_d3d12_adapter_mutex);
+	const std::unique_lock<std::shared_mutex> lock(g_adapter_mutex);
 
 	const auto device_proxy = get_private_pointer_d3dx<D3D12Device>(device);
-	if (device_proxy != nullptr && device_proxy->_orig == device)
+	if (device_proxy != nullptr)
 	{
-		InterlockedIncrement(&device_proxy->_ref);
+		assert(device != device_proxy);
+
 		*ppvDevice = device_proxy;
+		device_proxy->_ref++;
 	}
 
 	return hr;
@@ -64,7 +66,7 @@ HRESULT STDMETHODCALLTYPE ID3D12Resource_Map(ID3D12Resource *pResource, UINT Sub
 				to_handle(pResource),
 				0,
 				std::numeric_limits<uint64_t>::max(),
-				pReadRange != nullptr && pReadRange->End <= pReadRange->Begin ? reshade::api::map_access::write_only : reshade::api::map_access::read_write,
+				reshade::api::map_access::read_write,
 				ppData);
 		}
 		else if (ppData != nullptr)
@@ -72,18 +74,17 @@ HRESULT STDMETHODCALLTYPE ID3D12Resource_Map(ID3D12Resource *pResource, UINT Sub
 			reshade::api::subresource_data data;
 			data.data = *ppData;
 
-			D3D12_PLACED_SUBRESOURCE_FOOTPRINT placed_footprint;
-			device->GetCopyableFootprints(&desc, Subresource, 1, 0, &placed_footprint, &data.slice_pitch, nullptr, nullptr);
-
-			data.row_pitch = placed_footprint.Footprint.RowPitch;
-			data.slice_pitch *= placed_footprint.Footprint.RowPitch;
+			D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
+			device->GetCopyableFootprints(&desc, Subresource, 1, 0, &layout, &data.slice_pitch, nullptr, nullptr);
+			data.row_pitch = layout.Footprint.RowPitch;
+			data.slice_pitch *= layout.Footprint.RowPitch;
 
 			reshade::invoke_addon_event<reshade::addon_event::map_texture_region>(
 				device_proxy,
 				to_handle(pResource),
 				Subresource,
 				nullptr,
-				pReadRange != nullptr && pReadRange->End <= pReadRange->Begin ? reshade::api::map_access::write_only : reshade::api::map_access::read_write,
+				reshade::api::map_access::read_write,
 				&data);
 
 			*ppData = data.data;
@@ -95,7 +96,7 @@ HRESULT STDMETHODCALLTYPE ID3D12Resource_Map(ID3D12Resource *pResource, UINT Sub
 				to_handle(pResource),
 				Subresource,
 				nullptr,
-				pReadRange != nullptr && pReadRange->End <= pReadRange->Begin ? reshade::api::map_access::write_only : reshade::api::map_access::read_write,
+				reshade::api::map_access::read_write,
 				nullptr);
 		}
 	}

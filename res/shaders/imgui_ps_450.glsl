@@ -18,17 +18,17 @@ layout(push_constant) uniform PushConstants
 
 void main()
 {
-	switch (color_space)
+	if (color_space == COLOR_SPACE_HDR10)
 	{
-	case COLOR_SPACE_SCRGB:
+		vcol.rgb = to_pq(vcol.rgb);
+	}
+	else if (color_space == COLOR_SPACE_HLG)
+	{
+		vcol.rgb = to_hlg(vcol.rgb);
+	}
+	else if (color_space == COLOR_SPACE_SCRGB)
+	{
 		vcol.rgb = to_scrgb(vcol.rgb);
-		break;
-	case COLOR_SPACE_HDR10_PQ:
-		vcol.rgb = to_hdr10_pq(vcol.rgb);
-		break;
-	case COLOR_SPACE_HDR10_HLG:
-		vcol.rgb = to_hdr10_hlg(vcol.rgb);
-		break;
 	}
 
 	col = texture(s0, i.tex);

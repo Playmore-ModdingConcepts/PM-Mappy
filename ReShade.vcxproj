@@ -47,6 +47,7 @@
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
     <WindowsTargetPlatformVersion Condition="'$(VisualStudioVersion)'&gt;='16.0'">10.0</WindowsTargetPlatformVersion>
+    <ProjectName>Mappy</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
@@ -57,10 +58,10 @@
     <VcpkgEnabled>false</VcpkgEnabled>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Platform)'=='Win32'">
-    <TargetName>ReShade32</TargetName>
+    <TargetName>Mappy32</TargetName>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Platform)'=='x64'">
-    <TargetName>ReShade64</TargetName>
+    <TargetName>Mappy64</TargetName>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)'=='Debug'">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -90,16 +91,17 @@
     <Import Project="Common.props" />
     <Import Project="deps\D3D12On7.props" />
     <Import Project="deps\fpng.props" />
-    <Import Project="deps\glad.props" />
+    <Import Project="deps\gl3w.props" />
     <Import Project="deps\ImGui.props" />
-    <Import Project="deps\jxl.props" />
     <Import Project="deps\MinHook.props" />
     <Import Project="deps\OpenVR.props" />
     <Import Project="deps\OpenXR.props" />
+    <Import Project="deps\SPIRV.props" />
     <Import Project="deps\stb.props" />
     <Import Project="deps\utfcpp.props" />
-    <Import Project="deps\VMA.props" />
+    <Import Project="deps\Vulkan.props" />
     <Import Project="deps\Windows.props" />
+    <Import Project="deps\sk_hdr_png.props" />
   </ImportGroup>
   <PropertyGroup>
     <ExecutablePath>tools;$(ExecutablePath)</ExecutablePath>
@@ -118,7 +120,7 @@
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_GUI;RESHADE_API_LIBRARY_EXPORT;RESHADE_ADDON=2;RESHADE_VERBOSE_LOG;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -134,7 +136,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <ModuleDefinitionFile>res\exports.def</ModuleDefinitionFile>
-      <DelayLoadDLLs>D3DCompiler_47.dll;WinMM.dll;XInput9_1_0.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <FxCompile>
       <ShaderModel>4.0</ShaderModel>
@@ -152,7 +153,7 @@
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_GUI;RESHADE_API_LIBRARY_EXPORT;RESHADE_ADDON=2;RESHADE_VERBOSE_LOG;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -168,7 +169,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <ModuleDefinitionFile>res\exports.def</ModuleDefinitionFile>
-      <DelayLoadDLLs>D3DCompiler_47.dll;WinMM.dll;XInput9_1_0.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <FxCompile>
       <ShaderModel>4.0</ShaderModel>
@@ -186,7 +186,7 @@
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_GUI;RESHADE_API_LIBRARY_EXPORT;RESHADE_ADDON=2;RESHADE_LOCALIZATION;RESHADE_TEST_APPLICATION;RESHADE_VERBOSE_LOG;D3D_DEBUG_INFO;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -219,7 +219,7 @@
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_GUI;RESHADE_API_LIBRARY_EXPORT;RESHADE_ADDON=2;RESHADE_LOCALIZATION;RESHADE_TEST_APPLICATION;RESHADE_VERBOSE_LOG;D3D_DEBUG_INFO;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -253,7 +253,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_GUI;RESHADE_API_LIBRARY_EXPORT;RESHADE_ADDON=2;RESHADE_LOCALIZATION;_HAS_EXCEPTIONS=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -276,7 +276,6 @@
       <AdditionalLibraryDirectories>$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <ModuleDefinitionFile>res\exports.def</ModuleDefinitionFile>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
-      <DelayLoadDLLs>D3DCompiler_47.dll;WinMM.dll;XInput9_1_0.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <FxCompile>
       <ShaderModel>4.0</ShaderModel>
@@ -295,7 +294,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_GUI;RESHADE_API_LIBRARY_EXPORT;RESHADE_ADDON=2;RESHADE_LOCALIZATION;_HAS_EXCEPTIONS=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -318,7 +317,6 @@
       <AdditionalLibraryDirectories>$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <ModuleDefinitionFile>res\exports.def</ModuleDefinitionFile>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
-      <DelayLoadDLLs>D3DCompiler_47.dll;WinMM.dll;XInput9_1_0.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <FxCompile>
       <ShaderModel>4.0</ShaderModel>
@@ -337,7 +335,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_TEST_APPLICATION;RESHADE_VERBOSE_LOG;_HAS_EXCEPTIONS=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -377,7 +375,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_TEST_APPLICATION;RESHADE_VERBOSE_LOG;_HAS_EXCEPTIONS=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -417,7 +415,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_GUI;RESHADE_API_LIBRARY_EXPORT;RESHADE_ADDON=1;RESHADE_LOCALIZATION;_HAS_EXCEPTIONS=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -440,7 +438,7 @@
       <AdditionalLibraryDirectories>$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <ModuleDefinitionFile>res\exports.def</ModuleDefinitionFile>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
-      <DelayLoadDLLs>D3DCompiler_47.dll;WinMM.dll;XInput9_1_0.dll;ws2_32.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
+      <DelayLoadDLLs>ws2_32.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <FxCompile>
       <ShaderModel>4.0</ShaderModel>
@@ -462,7 +460,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <AdditionalIncludeDirectories>$(SolutionDir)res;$(SolutionDir)source;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>res;source;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RESHADE_GUI;RESHADE_API_LIBRARY_EXPORT;RESHADE_ADDON=1;RESHADE_LOCALIZATION;_HAS_EXCEPTIONS=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>6387;26812;28251;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
@@ -485,7 +483,7 @@
       <AdditionalLibraryDirectories>$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <ModuleDefinitionFile>res\exports.def</ModuleDefinitionFile>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
-      <DelayLoadDLLs>D3DCompiler_47.dll;WinMM.dll;XInput9_1_0.dll;ws2_32.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
+      <DelayLoadDLLs>ws2_32.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <FxCompile>
       <ShaderModel>4.0</ShaderModel>
@@ -505,14 +503,11 @@
     <ProjectReference Include="deps\fpng.vcxproj">
       <Project>{79f676af-1a25-49bb-9549-e533d162fb0a}</Project>
     </ProjectReference>
-    <ProjectReference Include="deps\glad.vcxproj">
+    <ProjectReference Include="deps\gl3w.vcxproj">
       <Project>{09c0d610-9b82-40d8-b37e-0d26e3bff77f}</Project>
     </ProjectReference>
     <ProjectReference Include="deps\ImGui.vcxproj">
       <Project>{9a62233b-0b70-4b48-91e8-35aa666bc32e}</Project>
-    </ProjectReference>
-    <ProjectReference Include="deps\jxl_simple_lossless.vcxproj">
-      <Project>{54216c95-7b51-46d3-ab11-4b341e76a774}</Project>
     </ProjectReference>
     <ProjectReference Include="deps\MinHook.vcxproj">
       <Project>{783fedfb-5124-4f8c-87bc-70aa8490266b}</Project>
@@ -554,7 +549,6 @@
     <ClCompile Include="source\d3d11\d3d11_command_list.cpp" />
     <ClCompile Include="source\d3d11\d3d11_device.cpp" />
     <ClCompile Include="source\d3d11\d3d11_device_context.cpp" />
-    <ClCompile Include="source\d3d11\d3d11_extensions.cpp" />
     <ClCompile Include="source\d3d11\d3d11_impl_command_list.cpp">
       <DisableSpecificWarnings>4063;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
@@ -571,7 +565,6 @@
     <ClCompile Include="source\d3d12\d3d12_descriptor_heap.cpp" />
     <ClCompile Include="source\d3d12\d3d12_device.cpp" />
     <ClCompile Include="source\d3d12\d3d12_device_downlevel.cpp" />
-    <ClCompile Include="source\d3d12\d3d12_extensions.cpp" />
     <ClCompile Include="source\d3d12\d3d12_impl_command_list.cpp" />
     <ClCompile Include="source\d3d12\d3d12_impl_command_list_immediate.cpp" />
     <ClCompile Include="source\d3d12\d3d12_impl_command_queue.cpp" />
@@ -607,7 +600,6 @@
     </ClCompile>
     <ClCompile Include="source\dll_resources.cpp" />
     <ClCompile Include="source\dxgi\dxgi.cpp" />
-    <ClCompile Include="source\dxgi\dxgi_adapter.cpp" />
     <ClCompile Include="source\dxgi\dxgi_d3d10.cpp" />
     <ClCompile Include="source\dxgi\dxgi_device.cpp" />
     <ClCompile Include="source\dxgi\dxgi_factory.cpp" />
@@ -622,15 +614,13 @@
     <ClCompile Include="source\imgui_function_table_19040.cpp" />
     <ClCompile Include="source\imgui_function_table_19180.cpp" />
     <ClCompile Include="source\imgui_function_table_19191.cpp" />
-    <ClCompile Include="source\imgui_function_table_19222.cpp" />
-    <ClCompile Include="source\imgui_function_table_19250.cpp" />
     <ClCompile Include="source\imgui_widgets.cpp" />
     <ClCompile Include="source\ini_file.cpp" />
     <ClCompile Include="source\input.cpp" />
     <ClCompile Include="source\input_gamepad.cpp">
       <PreprocessorDefinitions>_WIN32_WINNT=_WIN32_WINNT_WIN7;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
-    <ClCompile Include="source\opengl\opengl.cpp" />
+    <ClCompile Include="source\opengl\opengl_hooks.cpp" />
     <ClCompile Include="source\opengl\opengl_hooks_ffp.cpp" />
     <ClCompile Include="source\opengl\opengl_hooks_wgl.cpp" />
     <ClCompile Include="source\opengl\opengl_impl_command_list.cpp" />
@@ -639,11 +629,11 @@
     <ClCompile Include="source\opengl\opengl_impl_state_block.cpp" />
     <ClCompile Include="source\opengl\opengl_impl_swapchain.cpp" />
     <ClCompile Include="source\opengl\opengl_impl_type_convert.cpp" />
-    <ClCompile Include="source\openvr\openvr.cpp" />
+    <ClCompile Include="source\openvr\openvr_hooks.cpp" />
     <ClCompile Include="source\openvr\openvr_impl_swapchain.cpp" />
-    <ClCompile Include="source\openxr\openxr.cpp" />
+    <ClCompile Include="source\openxr\openxr_hooks.cpp" />
     <ClCompile Include="source\openxr\openxr_hooks_instance.cpp" />
-    <ClCompile Include="source\openxr\openxr_hooks_swapchain.cpp" />
+    <ClCompile Include="source\openxr\openxr_hooks_session.cpp" />
     <ClCompile Include="source\openxr\openxr_impl_swapchain.cpp" />
     <ClCompile Include="source\platform_utils.cpp" />
     <ClCompile Include="source\runtime.cpp" />
@@ -653,11 +643,10 @@
     <ClCompile Include="source\runtime_manager.cpp" />
     <ClCompile Include="source\runtime_update_check.cpp" />
     <ClCompile Include="source\state_block.cpp" />
-    <ClCompile Include="source\vulkan\vulkan.cpp" />
-    <ClCompile Include="source\vulkan\vulkan_hooks_command_list.cpp" />
+    <ClCompile Include="source\vulkan\vulkan_hooks.cpp" />
+    <ClCompile Include="source\vulkan\vulkan_hooks_cmd.cpp" />
     <ClCompile Include="source\vulkan\vulkan_hooks_device.cpp" />
     <ClCompile Include="source\vulkan\vulkan_hooks_instance.cpp" />
-    <ClCompile Include="source\vulkan\vulkan_hooks_swapchain.cpp" />
     <ClCompile Include="source\vulkan\vulkan_impl_command_list.cpp" />
     <ClCompile Include="source\vulkan\vulkan_impl_command_list_immediate.cpp" />
     <ClCompile Include="source\vulkan\vulkan_impl_command_queue.cpp" />
@@ -681,6 +670,7 @@
     <ClInclude Include="include\reshade_events.hpp" />
     <ClInclude Include="include\reshade_overlay.hpp" />
     <ClInclude Include="res\fonts\forkawesome.h" />
+    <ClInclude Include="res\fonts\glyph_ranges.hpp" />
     <ClInclude Include="res\resource.h" />
     <ClInclude Include="res\version.h" />
     <ClInclude Include="source\addon.hpp" />
@@ -698,7 +688,6 @@
     <ClInclude Include="source\d3d11\d3d11_command_list.hpp" />
     <ClInclude Include="source\d3d11\d3d11_device.hpp" />
     <ClInclude Include="source\d3d11\d3d11_device_context.hpp" />
-    <ClInclude Include="source\d3d11\d3d11_extensions.hpp" />
     <ClInclude Include="source\d3d11\d3d11_impl_device.hpp" />
     <ClInclude Include="source\d3d11\d3d11_impl_device_context.hpp" />
     <ClInclude Include="source\d3d11\d3d11_impl_state_block.hpp" />
@@ -712,7 +701,6 @@
     <ClInclude Include="source\d3d12\d3d12_descriptor_heap.hpp" />
     <ClInclude Include="source\d3d12\d3d12_device.hpp" />
     <ClInclude Include="source\d3d12\d3d12_device_downlevel.hpp" />
-    <ClInclude Include="source\d3d12\d3d12_extensions.hpp" />
     <ClInclude Include="source\d3d12\d3d12_impl_command_list.hpp" />
     <ClInclude Include="source\d3d12\d3d12_impl_command_list_immediate.hpp" />
     <ClInclude Include="source\d3d12\d3d12_impl_command_queue.hpp" />
@@ -734,7 +722,6 @@
     <ClInclude Include="source\d3d9\d3d9_swapchain.hpp" />
     <ClInclude Include="source\dll_log.hpp" />
     <ClInclude Include="source\dll_resources.hpp" />
-    <ClInclude Include="source\dxgi\dxgi_adapter.hpp" />
     <ClInclude Include="source\dxgi\dxgi_device.hpp" />
     <ClInclude Include="source\dxgi\dxgi_factory.hpp" />
     <ClInclude Include="source\dxgi\dxgi_swapchain.hpp" />
@@ -747,8 +734,6 @@
     <ClInclude Include="source\imgui_function_table_19040.hpp" />
     <ClInclude Include="source\imgui_function_table_19180.hpp" />
     <ClInclude Include="source\imgui_function_table_19191.hpp" />
-    <ClInclude Include="source\imgui_function_table_19222.hpp" />
-    <ClInclude Include="source\imgui_function_table_19250.hpp" />
     <ClInclude Include="source\imgui_widgets.hpp" />
     <ClInclude Include="source\ini_file.hpp" />
     <ClInclude Include="source\input.hpp" />

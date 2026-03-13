@@ -175,7 +175,7 @@ namespace ReShade.Setup.Pages
 				// Add Epic Games Launcher install location
 				try
 				{
-					string epicGamesConfigPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EpicGamesLauncher", "Saved", "Config", "WindowsEditor", "GameUserSettings.ini");
+					string epicGamesConfigPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EpicGamesLauncher", "Saved", "Config", "Windows", "GameUserSettings.ini");
 					if (File.Exists(epicGamesConfigPath))
 					{
 						var epicGamesConfig = new Utilities.IniFile(epicGamesConfigPath);
@@ -255,8 +255,7 @@ namespace ReShade.Setup.Pages
 						searchPath.ContainsIgnoreCase("java") ||
 						searchPath.ContainsIgnoreCase("steamvr") ||
 						searchPath.Contains("\\Portal\\bin") ||
-						searchPath.Contains("DotNet") ||
-						searchPath.Contains("\\lib\\"))
+						searchPath.Contains("DotNet"))
 					{
 						continue;
 					}
@@ -303,7 +302,6 @@ namespace ReShade.Setup.Pages
 							// Exclude common installer, support and launcher executables
 							if (path.ContainsIgnoreCase("activation") ||
 								path.ContainsIgnoreCase("apputil") ||
-								path.ContainsIgnoreCase("autorun") ||
 								path.ContainsIgnoreCase("benchmark") ||
 								path.ContainsIgnoreCase("cefprocess") ||
 								path.ContainsIgnoreCase("compile") ||
@@ -344,9 +342,7 @@ namespace ReShade.Setup.Pages
 								path.ContainsIgnoreCase("webview") ||
 								path.Contains("7za") ||
 								path.Contains("createdump") ||
-								path.Contains("crs-") ||
 								path.Contains("fossilize") ||
-								path.Contains("fxc") ||
 								path.Contains("Rpt") || // CrashRpt, SndRpt
 								path.Contains("svc") ||
 								path.Contains("SystemSoftware") ||

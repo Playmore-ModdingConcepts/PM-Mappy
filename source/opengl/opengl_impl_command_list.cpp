@@ -9,7 +9,7 @@
 #include <cstring> // std::memcpy
 #include <algorithm> // std::copy_n, std::max
 
-#define gl _device_impl->_dispatch_table
+#define gl gl3wProcs.gl
 
 #define glEnableOrDisable(cap, enable) \
 	if (enable) { \
@@ -20,6 +20,108 @@
 	}
 
 extern "C" void APIENTRY glDrawPixels(GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid *pixels);
+
+void reshade::opengl::pipeline_impl::apply(api::pipeline_stage stages) const
+{
+	if ((stages & api::pipeline_stage::all_shader_stages) != 0)
+	{
+		gl.UseProgram(program);
+	}
+
+	if ((stages & api::pipeline_stage::output_merger) != 0)
+	{
+		// Set clip space to something consistent
+		if (gl.ClipControl != nullptr)
+			gl.ClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+
+		glEnableOrDisable(GL_SAMPLE_ALPHA_TO_COVERAGE, sample_alpha_to_coverage);
+
+		for (GLuint i = 0; i < 8; ++i)
+		{
+			if (blend_enable[i])
+			{
+				gl.Enablei(GL_BLEND, i);
+			}
+			else
+			{
+				gl.Disablei(GL_BLEND, i);
+			}
+
+			gl.BlendFuncSeparatei(i, blend_src[i], blend_dst[i], blend_src_alpha[i], blend_dst_alpha[i]);
+			gl.BlendEquationSeparatei(i, blend_eq[i], blend_eq_alpha[i]);
+		}
+
+		gl.BlendColor(blend_constant[0], blend_constant[1], blend_constant[2], blend_constant[3]);
+
+		if (logic_op_enable)
+		{
+			gl.Enable(GL_COLOR_LOGIC_OP);
+			gl.LogicOp(logic_op);
+		}
+		else
+		{
+			gl.Disable(GL_COLOR_LOGIC_OP);
+		}
+
+		for (GLuint i = 0; i < 8; ++i)
+		{
+			gl.ColorMaski(i, color_write_mask[i][0], color_write_mask[i][1], color_write_mask[i][2], color_write_mask[i][3]);
+		}
+
+		gl.SampleMaski(0, sample_mask);
+	}
+
+	if ((stages & api::pipeline_stage::rasterizer) != 0)
+	{
+		gl.PolygonMode(GL_FRONT_AND_BACK, polygon_mode);
+
+		if (cull_mode != GL_NONE)
+		{
+			gl.Enable(GL_CULL_FACE);
+			gl.CullFace(cull_mode);
+		}
+		else
+		{
+			gl.Disable(GL_CULL_FACE);
+		}
+
+		gl.FrontFace(front_face);
+
+		glEnableOrDisable(GL_DEPTH_CLAMP, depth_clamp);
+		glEnableOrDisable(GL_SCISSOR_TEST, scissor_test);
+		glEnableOrDisable(GL_MULTISAMPLE, multisample_enable);
+		glEnableOrDisable(GL_LINE_SMOOTH, line_smooth_enable);
+	}
+
+	if ((stages & api::pipeline_stage::depth_stencil) != 0)
+	{
+		if (depth_test)
+		{
+			gl.Enable(GL_DEPTH_TEST);
+			gl.DepthMask(depth_mask);
+			gl.DepthFunc(depth_func);
+		}
+		else
+		{
+			gl.Disable(GL_DEPTH_TEST);
+		}
+
+		if (stencil_test)
+		{
+			gl.Enable(GL_STENCIL_TEST);
+			gl.StencilMaskSeparate(GL_FRONT, front_stencil_write_mask);
+			gl.StencilMaskSeparate(GL_BACK, back_stencil_write_mask);
+			gl.StencilOpSeparate(GL_FRONT, front_stencil_op_fail, front_stencil_op_depth_fail, front_stencil_op_pass);
+			gl.StencilOpSeparate(GL_BACK, back_stencil_op_fail, back_stencil_op_depth_fail, back_stencil_op_pass);
+			gl.StencilFuncSeparate(GL_FRONT, front_stencil_func, front_stencil_reference_value, front_stencil_read_mask);
+			gl.StencilFuncSeparate(GL_BACK, back_stencil_func, back_stencil_reference_value, back_stencil_read_mask);
+		}
+		else
+		{
+			gl.Disable(GL_STENCIL_TEST);
+		}
+	}
+}
 
 void reshade::opengl::device_context_impl::barrier(uint32_t count, const api::resource *resources, const api::resource_usage *old_states, const api::resource_usage *new_states)
 {
@@ -116,7 +218,7 @@ void reshade::opengl::device_context_impl::bind_render_targets_and_depth_stencil
 		temp_mem<GLenum, 8> draw_buffers(count);
 		for (uint32_t i = 0; i < count; ++i)
 		{
-			if (rtvs[i] == 0)
+			if (rtvs[i].handle == 0)
 			{
 				draw_buffers[i] = GL_NONE;
 			}
@@ -190,8 +292,6 @@ void reshade::opengl::device_context_impl::bind_framebuffer_with_resource(GLenum
 	case GL_TEXTURE_2D_ARRAY:
 	case GL_TEXTURE_2D_MULTISAMPLE_ARRAY:
 	case GL_TEXTURE_3D:
-	case GL_TEXTURE_CUBE_MAP:
-	case GL_TEXTURE_CUBE_MAP_ARRAY:
 		gl.FramebufferTextureLayer(target, attachment, dst_object, dst_subresource % dst_desc.texture.levels, dst_subresource / dst_desc.texture.levels);
 		break;
 	case GL_RENDERBUFFER:
@@ -243,7 +343,7 @@ void reshade::opengl::device_context_impl::bind_framebuffer_with_resource_views(
 
 	for (uint32_t i = 0; i < count; ++i)
 	{
-		if (rtvs[i] == 0)
+		if (rtvs[i].handle == 0)
 			continue;
 
 		switch (rtvs[i].handle >> 40)
@@ -337,7 +437,7 @@ void reshade::opengl::device_context_impl::update_current_window_height(api::res
 	case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
 	case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
 	case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
-		if (gl.VERSION_4_5)
+		if (_device_impl->_supports_dsa)
 		{
 			gl.GetTextureLevelParameteriv(object, 0, GL_TEXTURE_HEIGHT, &height);
 		}
@@ -359,7 +459,7 @@ void reshade::opengl::device_context_impl::update_current_window_height(api::res
 		}
 		break;
 	case GL_RENDERBUFFER:
-		if (gl.VERSION_4_5)
+		if (_device_impl->_supports_dsa)
 		{
 			gl.GetNamedRenderbufferParameteriv(object, GL_RENDERBUFFER_HEIGHT, &height);
 		}
@@ -415,108 +515,10 @@ void reshade::opengl::device_context_impl::bind_pipeline(api::pipeline_stage sta
 
 	// Always disable alpha test in case the application set that (fixes broken GUI rendering in Quake)
 	if (_device_impl->_compatibility_context)
-		gl.Disable(GL_ALPHA_TEST);
+		gl.Disable(0x0BC0 /* GL_ALPHA_TEST */);
 
 	const auto pipeline_object = reinterpret_cast<pipeline_impl *>(pipeline.handle);
-
-	if ((stages & api::pipeline_stage::all_shader_stages) != 0)
-	{
-		gl.UseProgram(pipeline_object->program);
-	}
-
-	if ((stages & api::pipeline_stage::output_merger) != 0)
-	{
-		// Set clip space to something consistent
-		if (gl.VERSION_4_5)
-			gl.ClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
-
-		glEnableOrDisable(GL_SAMPLE_ALPHA_TO_COVERAGE, pipeline_object->sample_alpha_to_coverage);
-
-		for (GLuint i = 0; i < 8; ++i)
-		{
-			if (pipeline_object->blend_enable[i])
-			{
-				gl.Enablei(GL_BLEND, i);
-			}
-			else
-			{
-				gl.Disablei(GL_BLEND, i);
-			}
-
-			gl.BlendFuncSeparatei(i, pipeline_object->blend_src[i], pipeline_object->blend_dst[i], pipeline_object->blend_src_alpha[i], pipeline_object->blend_dst_alpha[i]);
-			gl.BlendEquationSeparatei(i, pipeline_object->blend_eq[i], pipeline_object->blend_eq_alpha[i]);
-		}
-
-		gl.BlendColor(pipeline_object->blend_constant[0], pipeline_object->blend_constant[1], pipeline_object->blend_constant[2], pipeline_object->blend_constant[3]);
-
-		if (pipeline_object->logic_op_enable)
-		{
-			gl.Enable(GL_COLOR_LOGIC_OP);
-			gl.LogicOp(pipeline_object->logic_op);
-		}
-		else
-		{
-			gl.Disable(GL_COLOR_LOGIC_OP);
-		}
-
-		for (GLuint i = 0; i < 8; ++i)
-		{
-			gl.ColorMaski(i, pipeline_object->color_write_mask[i][0], pipeline_object->color_write_mask[i][1], pipeline_object->color_write_mask[i][2], pipeline_object->color_write_mask[i][3]);
-		}
-
-		gl.SampleMaski(0, pipeline_object->sample_mask);
-	}
-
-	if ((stages & api::pipeline_stage::rasterizer) != 0)
-	{
-		gl.PolygonMode(GL_FRONT_AND_BACK, pipeline_object->polygon_mode);
-
-		if (pipeline_object->cull_mode != GL_NONE)
-		{
-			gl.Enable(GL_CULL_FACE);
-			gl.CullFace(pipeline_object->cull_mode);
-		}
-		else
-		{
-			gl.Disable(GL_CULL_FACE);
-		}
-
-		gl.FrontFace(pipeline_object->front_face);
-
-		glEnableOrDisable(GL_DEPTH_CLAMP, pipeline_object->depth_clamp);
-		glEnableOrDisable(GL_SCISSOR_TEST, pipeline_object->scissor_test);
-		glEnableOrDisable(GL_MULTISAMPLE, pipeline_object->multisample_enable);
-		glEnableOrDisable(GL_LINE_SMOOTH, pipeline_object->line_smooth_enable);
-	}
-
-	if ((stages & api::pipeline_stage::depth_stencil) != 0)
-	{
-		if (pipeline_object->depth_test)
-		{
-			gl.Enable(GL_DEPTH_TEST);
-			gl.DepthMask(pipeline_object->depth_mask);
-			gl.DepthFunc(pipeline_object->depth_func);
-		}
-		else
-		{
-			gl.Disable(GL_DEPTH_TEST);
-		}
-
-		if (pipeline_object->stencil_test)
-		{
-			gl.Enable(GL_STENCIL_TEST);
-			gl.StencilMaskSeparate(GL_FRONT, pipeline_object->front_stencil_write_mask);
-			gl.StencilFuncSeparate(GL_FRONT, pipeline_object->front_stencil_func, static_cast<GLint>(pipeline_object->front_stencil_reference_value), pipeline_object->front_stencil_read_mask);
-			gl.StencilOpSeparate(GL_FRONT, pipeline_object->front_stencil_fail_op, pipeline_object->front_stencil_depth_fail_op, pipeline_object->front_stencil_pass_op);
-			gl.StencilMaskSeparate(GL_BACK, pipeline_object->back_stencil_write_mask);
-			gl.StencilFuncSeparate(GL_BACK, pipeline_object->back_stencil_func, static_cast<GLint>(pipeline_object->back_stencil_reference_value), pipeline_object->back_stencil_read_mask);
-			gl.StencilOpSeparate(GL_BACK, pipeline_object->back_stencil_fail_op, pipeline_object->back_stencil_depth_fail_op, pipeline_object->back_stencil_pass_op);
-		}
-		else
-		{
-			gl.Disable(GL_STENCIL_TEST);
-		}
-	}
+	pipeline_object->apply(stages);
 
 	if ((stages & api::pipeline_stage::input_assembler) != 0)
 	{
@@ -569,7 +571,7 @@ void reshade::opengl::device_context_impl::bind_pipeline_states(uint32_t count, 
 		switch (states[i])
 		{
 		case api::dynamic_state::alpha_test_enable:
-			glEnableOrDisable(GL_ALPHA_TEST, values[i]);
+			glEnableOrDisable(0x0BC0 /* GL_ALPHA_TEST */, values[i]);
 			break;
 		case api::dynamic_state::srgb_write_enable:
 			glEnableOrDisable(GL_FRAMEBUFFER_SRGB, values[i]);
@@ -694,11 +696,7 @@ void reshade::opengl::device_context_impl::bind_pipeline_states(uint32_t count, 
 			gl.LogicOp(convert_logic_op(static_cast<api::logic_op>(values[i])));
 			break;
 		case api::dynamic_state::blend_constant:
-			gl.BlendColor(
-				((values[i]      ) & 0xFF) / 255.0f,
-				((values[i] >>  4) & 0xFF) / 255.0f,
-				((values[i] >>  8) & 0xFF) / 255.0f,
-				((values[i] >> 12) & 0xFF) / 255.0f);
+			gl.BlendColor(((values[i]) & 0xFF) / 255.0f, ((values[i] >> 4) & 0xFF) / 255.0f, ((values[i] >> 8) & 0xFF) / 255.0f, ((values[i] >> 12) & 0xFF) / 255.0f);
 			break;
 		case api::dynamic_state::render_target_write_mask:
 			gl.ColorMask(values[i] & 0x1, (values[i] >> 1) & 0x1, (values[i] >> 2) & 0x1, (values[i] >> 3) & 0x1);
@@ -952,7 +950,7 @@ void reshade::opengl::device_context_impl::bind_viewports(uint32_t first, uint32
 void reshade::opengl::device_context_impl::bind_scissor_rects(uint32_t first, uint32_t count, const api::rect *rects)
 {
 	GLint clip_origin = GL_LOWER_LEFT;
-	if (gl.VERSION_4_5)
+	if (gl.ClipControl != nullptr)
 		gl.GetIntegerv(GL_CLIP_ORIGIN, &clip_origin);
 
 	for (uint32_t i = 0; i < count; ++i)
@@ -1115,7 +1113,7 @@ void reshade::opengl::device_context_impl::push_descriptors(api::shader_stage, a
 			if (descriptor.view == 0)
 				continue;
 
-			if (gl.VERSION_4_5)
+			if (_device_impl->_supports_dsa)
 			{
 				gl.BindTextureUnit(first + i, descriptor.view.handle & 0xFFFFFFFF);
 			}
@@ -1136,7 +1134,7 @@ void reshade::opengl::device_context_impl::push_descriptors(api::shader_stage, a
 			if (descriptor == 0)
 				continue;
 
-			if (gl.VERSION_4_5)
+			if (_device_impl->_supports_dsa)
 			{
 				gl.BindTextureUnit(first + i, descriptor.handle & 0xFFFFFFFF);
 			}
@@ -1352,7 +1350,7 @@ void reshade::opengl::device_context_impl::copy_buffer_region(api::resource src,
 	assert(src_offset <= static_cast<uint64_t>(std::numeric_limits<GLintptr>::max()) &&
 		   dst_offset <= static_cast<uint64_t>(std::numeric_limits<GLintptr>::max()) && (size == UINT64_MAX || size <= static_cast<uint64_t>(std::numeric_limits<GLsizeiptr>::max())));
 
-	if (gl.VERSION_4_5)
+	if (_device_impl->_supports_dsa)
 	{
 		if (UINT64_MAX == size)
 		{
@@ -1648,33 +1646,8 @@ void reshade::opengl::device_context_impl::copy_texture_region(api::resource src
 		const GLenum copy_depth = is_depth_stencil_format(src_desc.texture.format);
 		assert(copy_depth != GL_STENCIL_ATTACHMENT && is_depth_stencil_format(dst_desc.texture.format) == copy_depth);
 
-		if (src_target == GL_FRAMEBUFFER_DEFAULT)
-		{
-			if (0 != prev_read_binding)
-				gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-
-			gl.ReadBuffer(src_object);
-		}
-		else
-		{
-			bind_framebuffer_with_resource(GL_READ_FRAMEBUFFER, copy_depth != GL_NONE ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0, src, src_subresource, src_desc);
-
-			gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
-		}
-
-		if (dst_target == GL_FRAMEBUFFER_DEFAULT)
-		{
-			if (0 != prev_draw_binding)
-				gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-
-			gl.DrawBuffer(dst_object);
-		}
-		else
-		{
-			bind_framebuffer_with_resource(GL_DRAW_FRAMEBUFFER, copy_depth != GL_NONE ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0, dst, dst_subresource, dst_desc);
-
-			gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
-		}
+		bind_framebuffer_with_resource(GL_READ_FRAMEBUFFER, copy_depth != GL_NONE ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0, src, src_subresource, src_desc);
+		bind_framebuffer_with_resource(GL_DRAW_FRAMEBUFFER, copy_depth != GL_NONE ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0, dst, dst_subresource, dst_desc);
 
 		if (prev_scissor_test)
 			gl.Disable(GL_SCISSOR_TEST);
@@ -1836,7 +1809,7 @@ void reshade::opengl::device_context_impl::copy_texture_to_buffer(api::resource 
 
 			gl.GetTexImage(level_target, level, format, type, reinterpret_cast<void *>(static_cast<uintptr_t>(dst_offset)));
 		}
-		else if (gl.VERSION_4_5)
+		else if (_device_impl->_supports_dsa)
 		{
 			switch (src_target)
 			{
@@ -1901,7 +1874,7 @@ void reshade::opengl::device_context_impl::clear_depth_stencil_view(api::resourc
 	GLuint prev_draw_binding = 0;
 	gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, reinterpret_cast<GLint *>(&prev_draw_binding));
 
-	const bool binding_has_this_dsv = gl.VERSION_4_5 && (dsv == _device_impl->get_framebuffer_attachment(prev_draw_binding, GL_DEPTH, 0));
+	const bool binding_has_this_dsv = _device_impl->_supports_dsa && (dsv == _device_impl->get_framebuffer_attachment(prev_draw_binding, GL_DEPTH, 0));
 	if (!binding_has_this_dsv)
 		bind_framebuffer_with_resource_views(GL_DRAW_FRAMEBUFFER, 0, nullptr, dsv);
 
@@ -1930,7 +1903,7 @@ void reshade::opengl::device_context_impl::clear_render_target_view(api::resourc
 	GLuint prev_draw_binding = 0;
 	gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, reinterpret_cast<GLint *>(&prev_draw_binding));
 
-	const bool binding_has_this_rtv = gl.VERSION_4_5 && (rtv == _device_impl->get_framebuffer_attachment(prev_draw_binding, GL_COLOR, 0));
+	const bool binding_has_this_rtv = _device_impl->_supports_dsa && (rtv == _device_impl->get_framebuffer_attachment(prev_draw_binding, GL_COLOR, 0));
 	if (!binding_has_this_rtv)
 		bind_framebuffer_with_resource_views(GL_DRAW_FRAMEBUFFER, 1, &rtv, { 0 });
 
@@ -2095,15 +2068,6 @@ void reshade::opengl::device_context_impl::build_acceleration_structure(api::acc
 void reshade::opengl::device_context_impl::query_acceleration_structures(uint32_t, const api::resource_view *, api::query_heap, api::query_type, uint32_t)
 {
 	assert(false);
-}
-
-void reshade::opengl::device_context_impl::update_buffer_region(const void *data, api::resource dest, uint64_t dest_offset, uint64_t size)
-{
-	_device_impl->update_buffer_region(data, dest, dest_offset, size);
-}
-void reshade::opengl::device_context_impl::update_texture_region(const api::subresource_data &data, api::resource dest, uint32_t dest_subresource, const api::subresource_box *dest_box)
-{
-	_device_impl->update_texture_region(data, dest, dest_subresource, dest_box);
 }
 
 void reshade::opengl::device_context_impl::begin_debug_event(const char *label, const float[4])

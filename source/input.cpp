@@ -48,7 +48,6 @@ void reshade::input::register_window_with_raw_input(window_handle window, bool n
 
 	if (!insert.second) insert.first->second |= flags;
 }
-
 std::shared_ptr<reshade::input> reshade::input::register_window(window_handle window)
 {
 	assert(window != nullptr);
@@ -327,14 +326,14 @@ bool reshade::input::is_any_key_released() const
 
 unsigned int reshade::input::last_key_pressed() const
 {
-	for (unsigned int i = VK_MBUTTON; i < ARRAYSIZE(_keys); i++)
+	for (unsigned int i = VK_XBUTTON2 + 1; i < ARRAYSIZE(_keys); i++)
 		if (is_key_pressed(i))
 			return i;
 	return 0;
 }
 unsigned int reshade::input::last_key_released() const
 {
-	for (unsigned int i = VK_MBUTTON; i < ARRAYSIZE(_keys); i++)
+	for (unsigned int i = VK_XBUTTON2 + 1; i < ARRAYSIZE(_keys); i++)
 		if (is_key_released(i))
 			return i;
 	return 0;
@@ -423,12 +422,6 @@ void reshade::input::next_frame()
 		(GetKeyState_trampoline(VK_MENU) & 0x8000) == 0)
 		(_keys[VK_MENU] = 0x08);
 
-	// Update print screen state (there is no key down message, but the key up one is received via the message queue)
-	if ((_keys[VK_SNAPSHOT] & 0x80) == 0 &&
-		(GetAsyncKeyState_trampoline(VK_SNAPSHOT) & 0x8000) != 0)
-		(_keys[VK_SNAPSHOT] = 0x88),
-		(_keys_time[VK_SNAPSHOT] = time);
-
 	// Run through all forms of input blocking for all windows and establish whether any of them are blocking input
 	const std::shared_lock<std::shared_mutex> lock(s_windows_mutex);
 
@@ -478,7 +471,7 @@ std::string reshade::input::key_name(unsigned int keycode)
 }
 std::string reshade::input::key_name(const unsigned int key[4])
 {
-	assert(key[0] != VK_CONTROL && key[0] != VK_SHIFT && key[0] != VK_MENU);
+	assert(key[0]);
 
 	return (key[1] ? "Ctrl + " : std::string()) + (key[2] ? "Shift + " : std::string()) + (key[3] ? "Alt + " : std::string()) + key_name(key[0]);
 }
@@ -544,7 +537,7 @@ bool reshade::input::is_blocking_any_mouse_cursor_warping()
 
 extern "C" BOOL WINAPI HookGetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax)
 {
-#ifndef RESHADE_TEST_APPLICATION
+#if 1
 	DWORD mask = QS_ALLINPUT;
 	if (wMsgFilterMin != 0 || wMsgFilterMax != 0)
 	{
@@ -601,7 +594,7 @@ extern "C" BOOL WINAPI HookGetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMi
 }
 extern "C" BOOL WINAPI HookGetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax)
 {
-#ifndef RESHADE_TEST_APPLICATION
+#if 1
 	DWORD mask = QS_ALLINPUT;
 	if (wMsgFilterMin != 0 || wMsgFilterMax != 0)
 	{
@@ -851,7 +844,7 @@ extern "C" UINT WINAPI HookGetRawInputBuffer(PRAWINPUT pData, PUINT pcbSize, UIN
 	static const auto trampoline = reshade::hooks::call(HookGetRawInputBuffer);
 	const UINT result = trampoline(pData, pcbSize, cbSizeHeader);
 	// This is a high throughput API (i.e. 8 kHz mouse polling), so need a fast path to exit
-	if (result == static_cast<UINT>(-1) || pData == nullptr || *pcbSize == 0 || !(reshade::input::is_blocking_any_mouse_input() || reshade::input::is_blocking_any_keyboard_input()))
+	if (result < 0 || pData == nullptr || *pcbSize == 0 || !(reshade::input::is_blocking_any_mouse_input() || reshade::input::is_blocking_any_keyboard_input()))
 		return result;
 
 	using QWORD = UINT64;

@@ -4,7 +4,6 @@
  */
 
 #include "ini_file.hpp"
-#include <mutex>
 #include <shared_mutex>
 #include <cctype> // std::toupper
 #include <cassert>
@@ -12,19 +11,19 @@
 #include <utf8/core.h>
 
 static std::shared_mutex s_ini_cache_mutex;
-static std::unordered_map<std::filesystem::path::string_type, std::unique_ptr<reshade::ini_file>> s_ini_cache;
+static std::unordered_map<std::wstring, std::unique_ptr<ini_file>> s_ini_cache;
 
-reshade::ini_file &reshade::global_config()
+ini_file &reshade::global_config()
 {
-	return ini_file::load_cache(g_reshade_base_path / L"ReShade.ini");
+	return ini_file::load_cache(g_reshade_base_path);
 }
 
-reshade::ini_file::ini_file(const std::filesystem::path &path) : _path(path)
+ini_file::ini_file(const std::filesystem::path &path) : _path(path)
 {
 	load();
 }
 
-bool reshade::ini_file::load()
+bool ini_file::load()
 {
 	std::error_code ec;
 	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(_path, ec);
@@ -120,7 +119,7 @@ bool reshade::ini_file::load()
 
 	return true;
 }
-bool reshade::ini_file::save()
+bool ini_file::save()
 {
 	if (!_modified)
 		return true;
@@ -220,7 +219,7 @@ bool reshade::ini_file::save()
 	return true;
 }
 
-bool reshade::ini_file::flush_cache()
+bool ini_file::flush_cache()
 {
 	bool success = true;
 
@@ -234,7 +233,7 @@ bool reshade::ini_file::flush_cache()
 
 	return success;
 }
-bool reshade::ini_file::flush_cache(const std::filesystem::path &path)
+bool ini_file::flush_cache(const std::filesystem::path &path)
 {
 	assert(!path.empty() && path.is_absolute());
 
@@ -244,13 +243,13 @@ bool reshade::ini_file::flush_cache(const std::filesystem::path &path)
 	return it != s_ini_cache.end() && it->second->save();
 }
 
-void reshade::ini_file::clear_cache()
+void ini_file::clear_cache()
 {
 	const std::unique_lock<std::shared_mutex> lock(s_ini_cache_mutex);
 
 	s_ini_cache.clear();
 }
-void reshade::ini_file::clear_cache(const std::filesystem::path &path)
+void ini_file::clear_cache(const std::filesystem::path &path)
 {
 	assert(!path.empty() && path.is_absolute());
 
@@ -259,7 +258,7 @@ void reshade::ini_file::clear_cache(const std::filesystem::path &path)
 	s_ini_cache.erase(path);
 }
 
-reshade::ini_file *reshade::ini_file::find_cache(const std::filesystem::path &path)
+ini_file *ini_file::find_cache(const std::filesystem::path &path)
 {
 	assert(!path.empty() && path.is_absolute());
 
@@ -268,7 +267,7 @@ reshade::ini_file *reshade::ini_file::find_cache(const std::filesystem::path &pa
 	const auto it = s_ini_cache.find(path);
 	return it != s_ini_cache.end() ? it->second.get() : nullptr;
 }
-reshade::ini_file &reshade::ini_file::load_cache(const std::filesystem::path &path)
+ini_file &ini_file::load_cache(const std::filesystem::path &path)
 {
 	assert(!path.empty() && path.is_absolute());
 

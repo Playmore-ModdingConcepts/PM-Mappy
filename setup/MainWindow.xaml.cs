@@ -183,7 +183,7 @@ namespace ReShade.Setup
 
 		readonly bool isHeadless = false;
 		readonly bool isElevated = WindowsIdentity.GetCurrent().Owner.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid);
-		static readonly string commonPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ReShade");
+		static readonly string commonPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mappy");
 
 		IniFile compatibilityIni;
 
@@ -260,15 +260,17 @@ namespace ReShade.Setup
 			}
 		}
 
-		static string GetModuleProductName(string path)
+		static bool ModuleExists(string path, out bool isReShade)
 		{
 			if (File.Exists(path))
 			{
-				return FileVersionInfo.GetVersionInfo(path).ProductName;
+				isReShade = FileVersionInfo.GetVersionInfo(path).ProductName == "Mappy";
+				return true;
 			}
 			else
 			{
-				return null;
+				isReShade = false;
+				return false;
 			}
 		}
 
@@ -292,7 +294,7 @@ namespace ReShade.Setup
 			// Filter out invalid search paths (and those with remaining wildcards that were not handled above)
 			var validSearchPaths = searchPaths.Where(searchPath =>
 				{
-					if (searchPath.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || searchPath.IndexOf('*') >= 0)
+					if (searchPath.IndexOfAny(Path.GetInvalidPathChars()) < 0 && searchPath.IndexOf('*') < 0)
 					{
 						return false;
 					}
@@ -371,7 +373,7 @@ namespace ReShade.Setup
 					.Select(searchPath => searchPath.EndsWith(wildcard) ? new KeyValuePair<string, bool>(searchPath.Remove(searchPath.Length - 1 - wildcard.Length), true) : new KeyValuePair<string, bool>(searchPath, false))
 					.Where(searchPath =>
 						{
-							if (searchPath.Key.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || searchPath.Key.IndexOf('*') >= 0)
+							if (searchPath.Key.IndexOfAny(Path.GetInvalidPathChars()) < 0 && searchPath.Key.IndexOf('*') < 0)
 							{
 								return false;
 							}
@@ -647,7 +649,6 @@ namespace ReShade.Setup
 			bool isApiDDraw = false;
 			bool isApiOpenGL = false;
 			bool isApiVulkan = false;
-			currentInfo.targetApi = Api.Unknown;
 			currentInfo.targetOpenXR = false;
 
 			string basePath = Path.GetDirectoryName(currentInfo.targetPath);
@@ -661,25 +662,6 @@ namespace ReShade.Setup
 			string executableName = Path.GetFileName(currentInfo.targetPath);
 			if (compatibilityIni?.GetString(executableName, "Banned") == "1")
 			{
-				// Automatically uninstall ReShade from banned applications
-				foreach (string conflictingModuleName in new[] { "d3d9.dll", "d3d10.dll", "d3d11.dll", "d3d12.dll", "dxgi.dll", "opengl32.dll" })
-				{
-					string conflictingModulePath = Path.Combine(basePath, conflictingModuleName);
-
-					try
-					{
-						if (GetModuleProductName(conflictingModulePath) == "ReShade")
-						{
-							File.Delete(conflictingModulePath);
-						}
-					}
-					catch (SystemException)
-					{
-						// Ignore errors
-						continue;
-					}
-				}
-
 				UpdateStatusAndFinish(false, "The target application is known to have blocked or banned the usage of ReShade. Cannot continue installation.");
 				return;
 			}
@@ -689,11 +671,6 @@ namespace ReShade.Setup
 				if (compatibilityIni.HasValue(executableName, "InstallTarget"))
 				{
 					basePath = Path.Combine(basePath, compatibilityIni.GetString(executableName, "InstallTarget"));
-
-					if (compatibilityIni.HasValue(executableName, "Is64Bit"))
-					{
-						currentInfo.is64Bit = compatibilityIni.GetString(executableName, "Is64Bit") == "1";
-					}
 				}
 
 				string api = compatibilityIni.GetString(executableName, "RenderApi");
@@ -750,13 +727,6 @@ namespace ReShade.Setup
 				{
 					isApiOpenGL = false; // Prefer Vulkan and Direct3D over OpenGL
 				}
-			}
-
-			// In case DXVK is installed, default to Vulkan
-			if (GetModuleProductName(Path.Combine(basePath, "d3d9.dll")) == "DXVK" ||
-				GetModuleProductName(Path.Combine(basePath, "dxgi.dll")) == "DXVK")
-			{
-				isApiVulkan = true;
 			}
 
 			// In case this game is modded with NVIDIA RTX Remix, install to the Remix Bridge
@@ -819,7 +789,7 @@ namespace ReShade.Setup
 				{
 					basePath = Path.Combine(basePath, compatibilityIni.GetString(executableName, "InstallTarget"));
 
-					var globalConfig = new IniFile(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "ReShade.ini"));
+					var globalConfig = new IniFile(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "Mappy.ini"));
 					globalConfig.SetValue("INSTALL", "BasePath", basePath);
 					globalConfig.SaveFile();
 				}
@@ -855,11 +825,13 @@ namespace ReShade.Setup
 				}
 			}
 
-			currentInfo.configPath = Path.Combine(basePath, "ReShade.ini");
+			currentInfo.configPath = Path.Combine(basePath, "Mappy.ini");
+
+			bool isReShade = false;
 
 			if (currentInfo.targetApi == Api.Vulkan || currentInfo.targetOpenXR)
 			{
-				string moduleName = currentInfo.is64Bit ? "ReShade64" : "ReShade32";
+				string moduleName = currentInfo.is64Bit ? "Mappy64" : "Mappy32";
 				currentInfo.modulePath = Path.Combine(commonPath, moduleName, moduleName + ".dll");
 
 				if (currentOperation == InstallOperation.Install && File.Exists(currentInfo.configPath))
@@ -910,9 +882,9 @@ namespace ReShade.Setup
 
 				currentInfo.modulePath = Path.Combine(basePath, currentInfo.modulePath);
 
-				if (currentOperation == InstallOperation.Install && GetModuleProductName(currentInfo.modulePath) != null)
+				if (currentOperation == InstallOperation.Install && ModuleExists(currentInfo.modulePath, out isReShade))
 				{
-					if (GetModuleProductName(currentInfo.modulePath) == "ReShade")
+					if (isReShade)
 					{
 						if (isHeadless)
 						{
@@ -937,7 +909,7 @@ namespace ReShade.Setup
 			{
 				string conflictingModulePath = Path.Combine(basePath, conflictingModuleName);
 
-				if (currentOperation == InstallOperation.Install && GetModuleProductName(conflictingModulePath) == "ReShade")
+				if (currentOperation == InstallOperation.Install && ModuleExists(conflictingModulePath, out isReShade) && isReShade)
 				{
 					if (isHeadless)
 					{
@@ -996,7 +968,7 @@ namespace ReShade.Setup
 				zip = new ZipArchive(output, ZipArchiveMode.Read, false);
 
 				// Validate archive contains the ReShade DLLs
-				if (zip.GetEntry("ReShade32.dll") == null || zip.GetEntry("ReShade64.dll") == null)
+				if (zip.GetEntry("Mappy32.dll") == null || zip.GetEntry("Mappy64.dll") == null)
 				{
 					throw new InvalidDataException();
 				}
@@ -1016,7 +988,7 @@ namespace ReShade.Setup
 
 				try
 				{
-					if (GetModuleProductName(conflictingModulePath) == "ReShade")
+					if (ModuleExists(conflictingModulePath, out bool isReShade) && isReShade)
 					{
 						File.Delete(conflictingModulePath);
 					}
@@ -1064,9 +1036,9 @@ namespace ReShade.Setup
 
 				try
 				{
-					string commonPathLocal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ReShade");
-					string appConfigPath = Path.Combine(commonPath, "ReShadeApps.ini");
-					string appConfigPathLocal = Path.Combine(commonPathLocal, "ReShadeApps.ini");
+					string commonPathLocal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Mappy");
+					string appConfigPath = Path.Combine(commonPath, "MappyApps.ini");
+					string appConfigPathLocal = Path.Combine(commonPathLocal, "MappyApps.ini");
 
 					// Try to migrate previous ReShade installation
 					if (!File.Exists(appConfigPath) && File.Exists(appConfigPathLocal))
@@ -1077,26 +1049,26 @@ namespace ReShade.Setup
 					// Unregister any layers from previous ReShade installations
 					using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Software\Khronos\Vulkan\ExplicitLayers", true))
 					{
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade32", "ReShade32.json"), false);
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade64", "ReShade64.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy32", "Mappy32.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy64", "Mappy64.json"), false);
 					}
 					using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Software\Khronos\Vulkan\ImplicitLayers", true))
 					{
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy.json"), false);
 						key.DeleteValue(Path.Combine(commonPathLocal, "VkLayer_override.json"), false);
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade32_vk_override_layer.json"), false);
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade64_vk_override_layer.json"), false);
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade32", "ReShade32.json"), false);
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade64", "ReShade64.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy32_vk_override_layer.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy64_vk_override_layer.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy32", "Mappy.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy64", "Mappy.json"), false);
 					}
 					using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"Software\Khronos\Vulkan\ImplicitLayers", true))
 					{
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade32", "ReShade32.json"), false);
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade64", "ReShade64.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy32", "Mappy.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy64", "Mappy.json"), false);
 					}
 					using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"Software\Wow6432Node\Khronos\Vulkan\ImplicitLayers", true))
 					{
-						key.DeleteValue(Path.Combine(commonPathLocal, "ReShade32", "ReShade32.json"), false);
+						key.DeleteValue(Path.Combine(commonPathLocal, "Mappy32", "Mappy.json"), false);
 					}
 				}
 				catch (SystemException)
@@ -1104,7 +1076,7 @@ namespace ReShade.Setup
 					// Ignore errors
 				}
 
-				foreach (string layerModuleName in new[] { "ReShade32", "ReShade64" })
+				foreach (string layerModuleName in new[] { "Mappy32", "Mappy64" })
 				{
 					string layerModulePath = Path.Combine(commonPath, layerModuleName + ".dll");
 
@@ -1129,7 +1101,7 @@ namespace ReShade.Setup
 							manifest.ExtractToFile(layerManifestPath, true);
 
 							// Register this layer manifest
-							using (RegistryKey key = Registry.LocalMachine.CreateSubKey(Environment.Is64BitOperatingSystem && layerModuleName == "ReShade32" ? @"Software\Wow6432Node\Khronos\Vulkan\ImplicitLayers" : @"Software\Khronos\Vulkan\ImplicitLayers"))
+							using (RegistryKey key = Registry.LocalMachine.CreateSubKey(Environment.Is64BitOperatingSystem && layerModuleName == "Mappy32" ? @"Software\Wow6432Node\Khronos\Vulkan\ImplicitLayers" : @"Software\Khronos\Vulkan\ImplicitLayers"))
 							{
 								key.SetValue(layerManifestPath, 0, RegistryValueKind.DWord);
 							}
@@ -1151,7 +1123,7 @@ namespace ReShade.Setup
 							manifest.ExtractToFile(layerManifestPathXR, true);
 
 							// Register this layer manifest
-							using (RegistryKey key = Registry.LocalMachine.CreateSubKey(Environment.Is64BitOperatingSystem && layerModuleName == "ReShade32" ? @"Software\Wow6432Node\Khronos\OpenXR\1\ApiLayers\Implicit" : @"Software\Khronos\OpenXR\1\ApiLayers\Implicit"))
+							using (RegistryKey key = Registry.LocalMachine.CreateSubKey(Environment.Is64BitOperatingSystem && layerModuleName == "Mappy32" ? @"Software\Wow6432Node\Khronos\OpenXR\1\ApiLayers\Implicit" : @"Software\Khronos\OpenXR\1\ApiLayers\Implicit"))
 							{
 								key.SetValue(layerManifestPathXR, 0, RegistryValueKind.DWord);
 							}
@@ -1164,7 +1136,7 @@ namespace ReShade.Setup
 					}
 				}
 
-				var appConfig = new IniFile(Path.Combine(commonPath, "ReShadeApps.ini"));
+				var appConfig = new IniFile(Path.Combine(commonPath, "MappyApps.ini"));
 				if (appConfig.GetValue(string.Empty, "Apps", out string[] appKeys) == false || !appKeys.Contains(currentInfo.targetPath))
 				{
 					List<string> appKeysList = appKeys?.ToList() ?? new List<string>();
@@ -1180,7 +1152,7 @@ namespace ReShade.Setup
 
 				try
 				{
-					ZipArchiveEntry module = zip.GetEntry(currentInfo.is64Bit ? "ReShade64.dll" : "ReShade32.dll") ?? throw new FileFormatException("Setup archive is missing ReShade DLL file.");
+					ZipArchiveEntry module = zip.GetEntry(currentInfo.is64Bit ? "Mappy64.dll" : "Mappy32.dll") ?? throw new FileFormatException("Setup archive is missing ReShade DLL file.");
 					module.ExtractToFile(currentInfo.modulePath, true);
 				}
 				catch (SystemException ex)
@@ -1191,7 +1163,7 @@ namespace ReShade.Setup
 				}
 
 				// Create a default log file for troubleshooting
-				File.WriteAllText(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "ReShade.log"), @"
+				File.WriteAllText(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "Mappy.log"), @"
 If you are reading this after launching the game at least once, it likely means ReShade was not loaded by the game.
 
 In that event here are some steps you can try to resolve this:
@@ -1207,122 +1179,6 @@ In that event here are some steps you can try to resolve this:
 4) If none of the above helps, you can get support on the forums at https://reshade.me/forum. But search for your problem before
    creating a new topic, as somebody else may have already found a solution.
 ");
-			}
-
-			// Copy potential pre-made configuration file to target
-			if (!File.Exists(currentInfo.configPath))
-			{
-				try
-				{
-					foreach (string premadeConfigPath in new[] { "ReShade.ini", Path.Combine(Path.GetDirectoryName(currentInfo.configPath), "GShade.ini") })
-					{
-						if (File.Exists(premadeConfigPath))
-						{
-							File.Copy(premadeConfigPath, currentInfo.configPath);
-							break;
-						}
-					}
-				}
-				catch (SystemException ex)
-				{
-					UpdateStatusAndFinish(false, "Failed to install " + Path.GetFileName(currentInfo.configPath) + ":\n" + ex.Message);
-					return;
-				}
-			}
-
-			// Add default configuration
-			var config = new IniFile(currentInfo.configPath);
-			if (compatibilityIni != null && !config.HasValue("GENERAL", "PreprocessorDefinitions"))
-			{
-				string executableName = Path.GetFileName(currentInfo.targetPath);
-
-				string depthReversed = compatibilityIni.GetString(executableName, "DepthReversed", "0");
-				string depthUpsideDown = compatibilityIni.GetString(executableName, "DepthUpsideDown", "0");
-				string depthLogarithmic = compatibilityIni.GetString(executableName, "DepthLogarithmic", "0");
-				if (!compatibilityIni.HasValue(executableName, "DepthReversed"))
-				{
-					var info = FileVersionInfo.GetVersionInfo(currentInfo.targetPath);
-					if (info.LegalCopyright != null)
-					{
-						Match match = new Regex(@"(20[0-9]{2})", RegexOptions.RightToLeft).Match(info.LegalCopyright);
-						if (match.Success && int.TryParse(match.Groups[1].Value, out int year))
-						{
-							// Modern games usually use reversed depth
-							depthReversed = (year >= 2012) ? "1" : "0";
-						}
-					}
-				}
-
-				config.SetValue("GENERAL", "PreprocessorDefinitions",
-					"RESHADE_DEPTH_LINEARIZATION_FAR_PLANE=1000.0",
-					"RESHADE_DEPTH_INPUT_IS_UPSIDE_DOWN=" + depthUpsideDown,
-					"RESHADE_DEPTH_INPUT_IS_REVERSED=" + depthReversed,
-					"RESHADE_DEPTH_INPUT_IS_LOGARITHMIC=" + depthLogarithmic);
-
-				if (compatibilityIni.HasValue(executableName, "DepthCopyBeforeClears") ||
-					compatibilityIni.HasValue(executableName, "DepthCopyAtClearIndex") ||
-					compatibilityIni.HasValue(executableName, "DrawStatsHeuristic") ||
-					compatibilityIni.HasValue(executableName, "UseAspectRatioHeuristics"))
-				{
-					config.SetValue("DEPTH", "DepthCopyBeforeClears",
-						compatibilityIni.GetString(executableName, "DepthCopyBeforeClears", "0"));
-					config.SetValue("DEPTH", "DepthCopyAtClearIndex",
-						compatibilityIni.GetString(executableName, "DepthCopyAtClearIndex", "0"));
-					config.SetValue("DEPTH", "DrawStatsHeuristic",
-						compatibilityIni.GetString(executableName, "DrawStatsHeuristic", "0"));
-					config.SetValue("DEPTH", "UseAspectRatioHeuristics",
-						compatibilityIni.GetString(executableName, "UseAspectRatioHeuristics", "1"));
-				}
-			}
-
-			// Always add input section
-			if (!config.HasValue("INPUT"))
-			{
-				config.SetValue("INPUT", "KeyOverlay", "36,0,0,0");
-				// Only enable gamepad input in cases where keyboard and mouse input is known to not work (when installed to UWP apps or the NVIDIA RTX Remix Bridge)
-				config.SetValue("INPUT", "GamepadNavigation", currentInfo.targetPath.Contains("WindowsApps") || Path.GetFileName(currentInfo.targetPath) == "NvRemixBridge.exe" ? "1" : "0");
-			}
-
-			if (!config.HasValue("PROXY"))
-			{
-				config.SetValue("PROXY", "EnableProxyLibrary", "0");
-				config.SetValue("PROXY", "ProxyLibrary", "");
-			}
-
-			config.SaveFile();
-
-			// Change file permissions for files ReShade needs write access to
-			MakeWritable(currentInfo.configPath);
-			MakeWritable(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "ReShade.log"));
-			MakeWritable(Path.Combine(basePath, "ReShadePreset.ini"));
-
-			if (!isHeadless && currentOperation != InstallOperation.Update)
-			{
-				currentInfo.presetPath = config.GetString("GENERAL", "PresetPath", string.Empty);
-
-				if (!string.IsNullOrEmpty(currentInfo.presetPath))
-				{
-					// Change current directory so that "Path.GetFullPath" resolves correctly
-					string currentPath = Directory.GetCurrentDirectory();
-					Directory.SetCurrentDirectory(basePath);
-					currentInfo.presetPath = Path.GetFullPath(currentInfo.presetPath);
-					Directory.SetCurrentDirectory(currentPath);
-				}
-
-				Dispatcher.Invoke(() =>
-				{
-					CurrentPage.Navigate(new SelectEffectsPage
-					{
-						PresetPath = currentInfo.presetPath
-					});
-				});
-				return;
-			}
-
-			// Add default search paths if no config exists
-			if (!config.HasValue("GENERAL", "EffectSearchPaths") && !config.HasValue("GENERAL", "TextureSearchPaths"))
-			{
-				WriteSearchPaths(".\\reshade-shaders\\Shaders\\**", ".\\reshade-shaders\\Textures\\**");
 			}
 
 			InstallStep_Finish();
@@ -1343,7 +1199,7 @@ In that event here are some steps you can try to resolve this:
 					return;
 				}
 
-				var appConfig = new IniFile(Path.Combine(commonPath, "ReShadeApps.ini"));
+				var appConfig = new IniFile(Path.Combine(commonPath, "MappyApps.ini"));
 				if (appConfig.GetValue(string.Empty, "Apps", out string[] appKeys))
 				{
 					List<string> appKeysList = appKeys.ToList();
@@ -1358,26 +1214,26 @@ In that event here are some steps you can try to resolve this:
 
 							using (RegistryKey key = Registry.LocalMachine.CreateSubKey(@"Software\Khronos\Vulkan\ImplicitLayers"))
 							{
-								key.DeleteValue(Path.Combine(commonPath, "ReShade32.json"), false);
-								key.DeleteValue(Path.Combine(commonPath, "ReShade64.json"), false);
+								key.DeleteValue(Path.Combine(commonPath, "Mappy32.json"), false);
+								key.DeleteValue(Path.Combine(commonPath, "Mappy64.json"), false);
 							}
 
 							using (RegistryKey key = Registry.LocalMachine.CreateSubKey(@"Software\Khronos\OpenXR\1\ApiLayers\Implicit"))
 							{
-								key.DeleteValue(Path.Combine(commonPath, "ReShade32_XR.json"), false);
-								key.DeleteValue(Path.Combine(commonPath, "ReShade64_XR.json"), false);
+								key.DeleteValue(Path.Combine(commonPath, "Mappy32_XR.json"), false);
+								key.DeleteValue(Path.Combine(commonPath, "Mappy64_XR.json"), false);
 							}
 
 							if (Environment.Is64BitOperatingSystem)
 							{
 								using (RegistryKey key = Registry.LocalMachine.CreateSubKey(@"Software\Wow6432Node\Khronos\Vulkan\ImplicitLayers"))
 								{
-									key.DeleteValue(Path.Combine(commonPath, "ReShade32.json"), false);
+									key.DeleteValue(Path.Combine(commonPath, "Mappy32.json"), false);
 								}
 
 								using (RegistryKey key = Registry.LocalMachine.CreateSubKey(@"Software\Wow6432Node\Khronos\OpenXR\1\ApiLayers\Implicit"))
 								{
-									key.DeleteValue(Path.Combine(commonPath, "ReShade32_XR.json"), false);
+									key.DeleteValue(Path.Combine(commonPath, "Mappy32_XR.json"), false);
 								}
 							}
 						}
@@ -1398,7 +1254,7 @@ In that event here are some steps you can try to resolve this:
 			{
 				string basePath = Path.GetDirectoryName(currentInfo.configPath);
 
-				if (currentInfo.modulePath != null && currentInfo.targetApi != Api.Vulkan && !currentInfo.targetOpenXR)
+				if (currentInfo.targetApi != Api.Vulkan && !currentInfo.targetOpenXR)
 				{
 					File.Delete(currentInfo.modulePath);
 				}
@@ -1411,9 +1267,9 @@ In that event here are some steps you can try to resolve this:
 					File.Delete(currentInfo.configPath);
 				}
 
-				if (File.Exists(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "ReShade.log")))
+				if (File.Exists(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "Mappy.log")))
 				{
-					File.Delete(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "ReShade.log"));
+					File.Delete(Path.Combine(Path.GetDirectoryName(currentInfo.targetPath), "Mappy.log"));
 				}
 
 				foreach (KeyValuePair<string, bool> searchPath in effectSearchPaths)
@@ -1448,7 +1304,7 @@ In that event here are some steps you can try to resolve this:
 				{
 					string conflictingModulePath = Path.Combine(basePath, conflictingModuleName);
 
-					if (GetModuleProductName(conflictingModulePath) == "ReShade")
+					if (ModuleExists(conflictingModulePath, out bool isReShade) && isReShade)
 					{
 						File.Delete(conflictingModulePath);
 					}
@@ -1759,7 +1615,7 @@ In that event here are some steps you can try to resolve this:
 			string targetPathAddon = Path.GetDirectoryName(currentInfo.targetPath);
 			string targetPathEffects = Path.GetFullPath(Path.Combine(basePath, addon.EffectInstallPath));
 
-			string globalConfigPath = Path.Combine(targetPathAddon, "ReShade.ini");
+			string globalConfigPath = Path.Combine(targetPathAddon, "Mappy.ini");
 			if (File.Exists(globalConfigPath))
 			{
 				var globalConfig = new IniFile(globalConfigPath);
@@ -1791,15 +1647,8 @@ In that event here are some steps you can try to resolve this:
 		}
 		void InstallStep_Finish()
 		{
-			if (currentOperation != InstallOperation.Uninstall)
-			{
-				UpdateStatusAndFinish(true, "Successfully installed ReShade." +
-					(isHeadless ? string.Empty : "\nClick the \"Finish\" button to exit the setup tool.\n\nTo uninstall, run this setup tool and select the application again to be presented with an uninstall option."));
-			}
-			else
-			{
-				UpdateStatusAndFinish(true, "Successfully uninstalled ReShade." + (isHeadless ? string.Empty : "\nClick the \"Finish\" button to exit the setup tool."));
-			}
+			UpdateStatusAndFinish(true, (currentOperation != InstallOperation.Uninstall ? "Successfully installed ReShade." : "Successfully uninstalled ReShade.") +
+				(isHeadless ? string.Empty : "\nClick the \"Finish\" button to exit the setup tool."));
 		}
 
 		void OnWindowInit(object sender, EventArgs e)

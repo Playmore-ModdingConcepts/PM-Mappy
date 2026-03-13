@@ -62,24 +62,21 @@ namespace reshadefx
 		unknown = 0,
 
 		r8 = 61,
-		r16f = 54,
 		r16 = 56,
-		r32f = 41,
-		r32u = 42,
+		r16f = 54,
 		r32i = 43,
-
+		r32u = 42,
+		r32f = 41,
 		rg8 = 49,
-		rg16f = 34,
 		rg16 = 35,
+		rg16f = 34,
 		rg32f = 16,
-
 		rgba8 = 28,
-		rgba16f = 10,
 		rgba16 = 11,
-		rgba32f = 2,
-		rgba32u = 3,
+		rgba16f = 10,
 		rgba32i = 4,
-
+		rgba32u = 3,
+		rgba32f = 2,
 		rgb10a2 = 24,
 		rg11b10f = 26
 	};
@@ -109,7 +106,6 @@ namespace reshadefx
 		std::vector<annotation> annotations;
 		bool render_target = false;
 		bool storage_access = false;
-		uint32_t semantic_binding = 0xFFFFFFFF;
 	};
 
 	/// <summary>

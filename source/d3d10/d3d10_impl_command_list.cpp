@@ -52,7 +52,7 @@ void reshade::d3d10::device_impl::barrier(uint32_t count, const api::resource *r
 	if (transitions_away_from_shader_resource_usage != 0)
 	{
 #if 1
-#define RESHADE_D3D10_UNBIND_SHADER_RESOURCE_VIEWS(stage) \
+#define UNBIND_SHADER_RESOURCE_VIEWS(stage) \
 		bool update_##stage = false; \
 		com_ptr<ID3D10ShaderResourceView> srvs_##stage[D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT]; \
 		_orig->stage##GetShaderResources(0, D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, reinterpret_cast<ID3D10ShaderResourceView **>(srvs_##stage)); \
@@ -72,16 +72,16 @@ void reshade::d3d10::device_impl::barrier(uint32_t count, const api::resource *r
 		if (update_##stage) \
 			_orig->stage##SetShaderResources(0, D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, reinterpret_cast<ID3D10ShaderResourceView *const *>(srvs_##stage));
 #else
-#define RESHADE_D3D10_UNBIND_SHADER_RESOURCE_VIEWS(stage) \
+#define UNBIND_SHADER_RESOURCE_VIEWS(stage) \
 		ID3D10ShaderResourceView *null_srvs_##stage[D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {}; \
 		_orig->stage##SetShaderResources(0, D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, null_srvs_##stage);
 #endif
 
-		RESHADE_D3D10_UNBIND_SHADER_RESOURCE_VIEWS(VS);
-		RESHADE_D3D10_UNBIND_SHADER_RESOURCE_VIEWS(GS);
-		RESHADE_D3D10_UNBIND_SHADER_RESOURCE_VIEWS(PS);
+		UNBIND_SHADER_RESOURCE_VIEWS(VS);
+		UNBIND_SHADER_RESOURCE_VIEWS(GS);
+		UNBIND_SHADER_RESOURCE_VIEWS(PS);
 
-#undef RESHADE_D3D10_UNBIND_SHADER_RESOURCE_VIEWS
+#undef UNBIND_SHADER_RESOURCE_VIEWS
 	}
 }
 
@@ -186,12 +186,7 @@ void reshade::d3d10::device_impl::bind_pipeline_states(uint32_t count, const api
 			_orig->IASetPrimitiveTopology(convert_primitive_topology(static_cast<api::primitive_topology>(values[i])));
 			break;
 		case api::dynamic_state::blend_constant:
-			if (const float blend_constant[4] = {
-					((values[i]      ) & 0xFF) / 255.0f,
-					((values[i] >>  4) & 0xFF) / 255.0f,
-					((values[i] >>  8) & 0xFF) / 255.0f,
-					((values[i] >> 12) & 0xFF) / 255.0f
-				};
+			if (const float blend_constant[4] = { ((values[i]) & 0xFF) / 255.0f, ((values[i] >> 4) & 0xFF) / 255.0f, ((values[i] >> 8) & 0xFF) / 255.0f, ((values[i] >> 12) & 0xFF) / 255.0f };
 				i + 1 < count &&
 				states[i + 1] == api::dynamic_state::sample_mask)
 			{

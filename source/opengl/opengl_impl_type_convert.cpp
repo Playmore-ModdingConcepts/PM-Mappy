@@ -101,24 +101,10 @@ auto reshade::opengl::convert_format(api::format format, GLint swizzle_mask[4]) 
 	case api::format::r8g8b8x8_unorm:
 	case api::format::b8g8r8x8_typeless:
 	case api::format::b8g8r8x8_unorm:
-		if (swizzle_mask != nullptr)
-		{
-			swizzle_mask[0] = GL_RED;
-			swizzle_mask[1] = GL_GREEN;
-			swizzle_mask[2] = GL_BLUE;
-			swizzle_mask[3] = GL_ONE;
-		}
-		return GL_RGBA8;
+		return GL_RGB8;
 	case api::format::r8g8b8x8_unorm_srgb:
 	case api::format::b8g8r8x8_unorm_srgb:
-		if (swizzle_mask != nullptr)
-		{
-			swizzle_mask[0] = GL_RED;
-			swizzle_mask[1] = GL_GREEN;
-			swizzle_mask[2] = GL_BLUE;
-			swizzle_mask[3] = GL_ONE;
-		}
-		return GL_SRGB8_ALPHA8;
+		return GL_SRGB8;
 
 	case api::format::r10g10b10a2_typeless:
 	case api::format::r10g10b10a2_unorm:
@@ -157,7 +143,7 @@ auto reshade::opengl::convert_format(api::format format, GLint swizzle_mask[4]) 
 			swizzle_mask[3] = GL_ONE;
 			return GL_R16;
 		}
-		return GL_LUMINANCE16;
+		return 0x8042 /* GL_LUMINANCE16 */;
 
 	case api::format::r16g16_typeless:
 	case api::format::r16g16_float:
@@ -183,7 +169,7 @@ auto reshade::opengl::convert_format(api::format format, GLint swizzle_mask[4]) 
 			swizzle_mask[3] = GL_GREEN;
 			return GL_RG16;
 		}
-		return GL_LUMINANCE16_ALPHA16;
+		return 0x8048 /* GL_LUMINANCE16_ALPHA16 */;
 
 	case api::format::r16g16b16_typeless:
 	case api::format::r16g16b16_float:
@@ -338,10 +324,10 @@ auto reshade::opengl::convert_format(GLenum internal_format, const GLint swizzle
 		internal_format != 4 &&
 		internal_format != GL_RED &&
 		internal_format != GL_ALPHA &&
-		internal_format != GL_LUMINANCE &&
-		internal_format != GL_INTENSITY &&
+		internal_format != 0x1909 /* GL_LUMINANCE */ &&
+		internal_format != 0x8049 /* GL_INTENSITY */ &&
 		internal_format != GL_RG &&
-		internal_format != GL_LUMINANCE_ALPHA &&
+		internal_format != 0x190A /* GL_LUMINANCE_ALPHA */ &&
 		internal_format != GL_RGB &&
 		internal_format != GL_RGBA &&
 		internal_format != GL_STENCIL_INDEX &&
@@ -370,7 +356,7 @@ auto reshade::opengl::convert_format(GLenum internal_format, const GLint swizzle
 	case GL_R8I:
 		return api::format::r8_sint;
 	case GL_LUMINANCE8_EXT: // { R, R, R, 1 }
-	case GL_INTENSITY8: // { R, R, R, R }
+	case 0x804B /* GL_INTENSITY8 */: // { R, R, R, R }
 		return api::format::l8_unorm;
 	case GL_ALPHA8_EXT:
 		return api::format::a8_unorm;
@@ -442,8 +428,8 @@ auto reshade::opengl::convert_format(GLenum internal_format, const GLint swizzle
 	case GL_ALPHA16F_EXT:
 		return api::format::a16_float;
 #endif
-	case GL_LUMINANCE16: // { R, R, R, 1 }
-	case GL_INTENSITY16: // { R, R, R, R }
+	case 0x8042 /* GL_LUMINANCE16 */: // { R, R, R, 1 }
+	case 0x804D /* GL_INTENSITY16 */: // { R, R, R, R }
 		return api::format::l16_unorm;
 
 	case GL_RG16F:
@@ -466,7 +452,7 @@ auto reshade::opengl::convert_format(GLenum internal_format, const GLint swizzle
 	case GL_LUMINANCE_ALPHA16F_EXT:
 		return api::format::l16a16_float;
 #endif
-	case GL_LUMINANCE16_ALPHA16: // { R, R, R, G }
+	case 0x8048 /* GL_LUMINANCE16_ALPHA16 */: // { R, R, R, G }
 		return api::format::l16a16_unorm;
 
 	case GL_RGB16F:
@@ -551,10 +537,10 @@ auto reshade::opengl::convert_format(GLenum internal_format, const GLint swizzle
 	case GL_DEPTH24_STENCIL8:
 		return api::format::d24_unorm_s8_uint;
 	case GL_DEPTH_COMPONENT32F:
-	case 0x8DAB /* GL_DEPTH_COMPONENT32F_NV */:
+	case GL_DEPTH_COMPONENT32F_NV:
 		return api::format::d32_float;
 	case GL_DEPTH32F_STENCIL8:
-	case 0x8DAC /* GL_DEPTH32F_STENCIL8_NV */:
+	case GL_DEPTH32F_STENCIL8_NV:
 		return api::format::d32_float_s8_uint;
 
 	case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
@@ -597,6 +583,9 @@ void reshade::opengl::convert_pixel_format(api::format format, PIXELFORMATDESCRI
 {
 	switch (format)
 	{
+	default:
+		assert(false);
+		break;
 	case api::format::r8g8b8a8_unorm:
 	case api::format::r8g8b8a8_unorm_srgb:
 		pfd.iPixelType = PFD_TYPE_RGBA;
@@ -657,7 +646,7 @@ void reshade::opengl::convert_pixel_format(api::format format, PIXELFORMATDESCRI
 		pfd.cRedBits = 10;
 		pfd.cRedShift = 0;
 		pfd.cGreenBits = 10;
-		pfd.cGreenShift = 10;
+		pfd.cGreenBits = 10;
 		pfd.cBlueBits = 10;
 		pfd.cBlueShift = 20;
 		pfd.cAlphaBits = 2;
@@ -711,9 +700,6 @@ void reshade::opengl::convert_pixel_format(api::format format, PIXELFORMATDESCRI
 		pfd.cAlphaBits = 0;
 		pfd.cAlphaShift = 0;
 		break;
-	default:
-		assert(false);
-		break;
 	}
 }
 auto reshade::opengl::convert_pixel_format(const PIXELFORMATDESCRIPTOR &pfd) -> api::format
@@ -722,6 +708,9 @@ auto reshade::opengl::convert_pixel_format(const PIXELFORMATDESCRIPTOR &pfd) -> 
 
 	switch (pfd.cColorBits)
 	{
+	default:
+		assert(false);
+		return api::format::unknown;
 	case 16:
 		return api::format::b5g6r5_unorm;
 	case 24:
@@ -738,9 +727,6 @@ auto reshade::opengl::convert_pixel_format(const PIXELFORMATDESCRIPTOR &pfd) -> 
 		return api::format::r16g16b16a16_float;
 	case 128:
 		return api::format::r32g32b32a32_float;
-	default:
-		assert(false);
-		return api::format::unknown;
 	}
 }
 
@@ -1086,8 +1072,8 @@ auto reshade::opengl::convert_upload_format(GLenum format, GLenum type) -> api::
 			assert(false);
 			return api::format::unknown;
 		}
-	case GL_LUMINANCE:
-	case GL_INTENSITY:
+	case 0x1909 /* GL_LUMINANCE */:
+	case 0x8049 /* GL_INTENSITY */:
 		switch (type)
 		{
 		case GL_UNSIGNED_BYTE:
@@ -1138,7 +1124,7 @@ auto reshade::opengl::convert_upload_format(GLenum format, GLenum type) -> api::
 			assert(false);
 			return api::format::unknown;
 		}
-	case GL_LUMINANCE_ALPHA:
+	case 0x190A /* GL_LUMINANCE_ALPHA */:
 		switch (type)
 		{
 		case GL_UNSIGNED_BYTE:
@@ -1526,28 +1512,28 @@ auto reshade::opengl::convert_sized_internal_format(GLenum internal_format, GLen
 	{
 	case 1:
 		if (format == GL_ALPHA)
-			return GL_ALPHA8;
-		if (format == GL_LUMINANCE)
-			return GL_LUMINANCE8;
-		if (format == GL_INTENSITY)
-			return GL_INTENSITY8;
+			return 0x803C /* GL_ALPHA8 */;
+		if (format == 0x1909 /* GL_LUMINANCE */)
+			return 0x8040 /* GL_LUMINANCE8 */;
+		if (format == 0x8049 /* GL_INTENSITY */)
+			return 0x804B /* GL_INTENSITY8 */;
 		[[fallthrough]];
 	case GL_RED:
 		return GL_R8;
 	case GL_ALPHA:
-		return GL_ALPHA8;
-	case GL_LUMINANCE:
-		return GL_LUMINANCE8;
-	case GL_INTENSITY:
-		return GL_INTENSITY8;
+		return 0x803C /* GL_ALPHA8 */;
+	case 0x1909 /* GL_LUMINANCE */:
+		return 0x8040 /* GL_LUMINANCE8 */;
+	case 0x8049 /* GL_INTENSITY */:
+		return 0x804B /* GL_INTENSITY8 */;
 	case 2:
-		if (format == GL_LUMINANCE_ALPHA) // Used by Penumbra: Overture
-			return GL_LUMINANCE8_ALPHA8;
+		if (format == 0x190A /* GL_LUMINANCE_ALPHA */) // Used by Penumbra: Overture
+			return 0x8045 /* GL_LUMINANCE8_ALPHA8 */;
 		[[fallthrough]];
 	case GL_RG:
 		return GL_RG8;
-	case GL_LUMINANCE_ALPHA:
-		return GL_LUMINANCE8_ALPHA8;
+	case 0x190A /* GL_LUMINANCE_ALPHA */:
+		return 0x8045 /* GL_LUMINANCE8_ALPHA8 */;
 	case 3:
 	case GL_RGB:
 		return GL_RGB8;
@@ -1560,11 +1546,11 @@ auto reshade::opengl::convert_sized_internal_format(GLenum internal_format, GLen
 		return GL_DEPTH_COMPONENT24;
 	case GL_DEPTH_COMPONENT32:
 	// Replace formats from 'GL_NV_depth_buffer_float' extension with their core variants
-	case 0x8DAB /* GL_DEPTH_COMPONENT32F_NV */:
+	case GL_DEPTH_COMPONENT32F_NV:
 		return GL_DEPTH_COMPONENT32F;
 	case GL_DEPTH_STENCIL:
 		return GL_DEPTH24_STENCIL8;
-	case 0x8DAC /* GL_DEPTH32F_STENCIL8_NV */:
+	case GL_DEPTH32F_STENCIL8_NV:
 		return GL_DEPTH32F_STENCIL8;
 	default:
 		return internal_format;
@@ -1575,6 +1561,8 @@ auto reshade::opengl::is_depth_stencil_format(api::format format) -> GLenum
 {
 	switch (format)
 	{
+	default:
+		return GL_NONE;
 	case api::format::s8_uint:
 		return GL_STENCIL_ATTACHMENT;
 	case api::format::d16_unorm:
@@ -1584,8 +1572,6 @@ auto reshade::opengl::is_depth_stencil_format(api::format format) -> GLenum
 	case api::format::d24_unorm_s8_uint:
 	case api::format::d32_float_s8_uint:
 		return GL_DEPTH_STENCIL_ATTACHMENT;
-	default:
-		return GL_NONE;
 	}
 }
 
@@ -1628,22 +1614,21 @@ void reshade::opengl::convert_resource_desc(const api::resource_desc &desc, GLsi
 
 	switch (desc.heap)
 	{
-	case api::memory_heap::default_:
+	default:
+	case api::memory_heap::unknown:
+		storage_flags = GL_MAP_READ_BIT | GL_MAP_WRITE_BIT;
+		break;
+	case api::memory_heap::gpu_only:
 		storage_flags = 0;
 		break;
-	case api::memory_heap::upload:
+	case api::memory_heap::cpu_to_gpu:
 		storage_flags = GL_MAP_WRITE_BIT;
 		break;
-	case api::memory_heap::readback:
+	case api::memory_heap::gpu_to_cpu:
 		storage_flags = GL_MAP_READ_BIT;
 		break;
-	case api::memory_heap::scratch:
+	case api::memory_heap::cpu_only:
 		storage_flags = GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_CLIENT_STORAGE_BIT;
-		break;
-	default:
-	case api::memory_heap::custom:
-	case api::memory_heap::gpu_upload:
-		storage_flags = GL_MAP_READ_BIT | GL_MAP_WRITE_BIT;
 		break;
 	}
 
@@ -1718,17 +1703,17 @@ reshade::api::resource_desc reshade::opengl::convert_resource_desc(GLenum target
 
 	switch (storage_flags & (GL_MAP_READ_BIT | GL_MAP_WRITE_BIT))
 	{
+	case GL_MAP_READ_BIT | GL_MAP_WRITE_BIT:
+		desc.heap = api::memory_heap::unknown;
+		break;
 	case 0:
-		desc.heap = api::memory_heap::default_;
+		desc.heap = api::memory_heap::gpu_only;
 		break;
 	case GL_MAP_WRITE_BIT:
-		desc.heap = api::memory_heap::upload;
+		desc.heap = api::memory_heap::cpu_to_gpu;
 		break;
 	case GL_MAP_READ_BIT:
-		desc.heap = api::memory_heap::readback;
-		break;
-	case GL_MAP_READ_BIT | GL_MAP_WRITE_BIT:
-		desc.heap = api::memory_heap::custom;
+		desc.heap = api::memory_heap::gpu_to_cpu;
 		break;
 	}
 
@@ -1763,7 +1748,7 @@ reshade::api::resource_desc reshade::opengl::convert_resource_desc(GLenum target
 	desc.texture.levels = static_cast<uint16_t>(levels);
 	desc.texture.format = convert_format(internal_format, swizzle_mask);
 	desc.texture.samples = static_cast<uint16_t>(samples);
-	desc.heap = api::memory_heap::default_;
+	desc.heap = api::memory_heap::gpu_only;
 
 	desc.usage = api::resource_usage::copy_dest | api::resource_usage::copy_source | api::resource_usage::resolve_dest;
 	if (desc.texture.samples >= 2)
@@ -1859,15 +1844,15 @@ GLuint reshade::opengl::get_index_type_size(GLenum index_type)
 #else
 	switch (index_type)
 	{
+	default:
+		assert(false);
+		return 0;
 	case GL_UNSIGNED_BYTE:
 		return 1;
 	case GL_UNSIGNED_SHORT:
 		return 2;
 	case GL_UNSIGNED_INT:
 		return 4;
-	default:
-		assert(false);
-		return 0;
 	}
 #endif
 }
@@ -2326,6 +2311,9 @@ auto   reshade::opengl::convert_primitive_topology(GLenum value) -> api::primiti
 {
 	switch (value)
 	{
+	default:
+		assert(false);
+		return api::primitive_topology::undefined;
 	case GL_POINTS:
 		return api::primitive_topology::point_list;
 	case GL_LINES:
@@ -2349,17 +2337,14 @@ auto   reshade::opengl::convert_primitive_topology(GLenum value) -> api::primiti
 		return api::primitive_topology::triangle_strip_adj;
 	case GL_QUADS:
 		return api::primitive_topology::quad_list;
-	case GL_QUAD_STRIP:
+	case 0x0008 /* GL_QUAD_STRIP */:
 		return api::primitive_topology::quad_strip;
-	case GL_POLYGON:
+	case 0x0009 /* GL_POLYGON */:
 		// Valid to draw a single, convex polygon between 'glBegin' and 'glEnd', but does not translate well
 		return api::primitive_topology::undefined;
 	case GL_PATCHES:
 		// This needs to be adjusted externally based on 'GL_PATCH_VERTICES'
 		return api::primitive_topology::patch_list_01_cp;
-	default:
-		assert(false);
-		return api::primitive_topology::undefined;
 	}
 }
 GLenum reshade::opengl::convert_primitive_topology(api::primitive_topology value)
@@ -2381,7 +2366,7 @@ GLenum reshade::opengl::convert_primitive_topology(api::primitive_topology value
 	case api::primitive_topology::quad_list:
 		return GL_QUADS;
 	case api::primitive_topology::quad_strip:
-		return GL_QUAD_STRIP;
+		return 0x0008 /* GL_QUAD_STRIP */;
 	case api::primitive_topology::line_list_adj:
 		return GL_LINES_ADJACENCY;
 	case api::primitive_topology::line_strip_adj:
@@ -2448,9 +2433,9 @@ GLenum reshade::opengl::convert_query_type(api::query_type value)
 		return GL_NONE;
 	}
 }
-GLenum reshade::opengl::convert_shader_type(api::shader_stage value)
+GLenum reshade::opengl::convert_shader_type(api::shader_stage type)
 {
-	switch (value)
+	switch (type)
 	{
 	case api::shader_stage::vertex:
 		return GL_VERTEX_SHADER;

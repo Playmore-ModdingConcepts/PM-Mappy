@@ -24,16 +24,16 @@ void init_device_proxy_for_d3d9on12(Direct3DDevice9 *device_proxy)
 {
 	IDirect3DDevice9 *device = device_proxy->_orig;
 	IDirect3DDevice9On12 *d3d9on12_device = nullptr;
-	if (FAILED(device->QueryInterface(IID_PPV_ARGS(&d3d9on12_device))))
-		return;
-
-	com_ptr<ID3D12Device> d3d12_device;
-	if (FAILED(d3d9on12_device->GetD3D12Device(IID_PPV_ARGS(&d3d12_device))))
-		return;
-
-	if (const auto device_proxy_12 = get_private_pointer_d3dx<D3D12Device>(d3d12_device.get()))
+	if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&d3d9on12_device))))
 	{
-		device_proxy->_d3d9on12_device = new Direct3DDevice9On12(device_proxy, device_proxy_12, d3d9on12_device);
+		com_ptr<ID3D12Device> d3d12_device;
+		if (SUCCEEDED(d3d9on12_device->GetD3D12Device(IID_PPV_ARGS(&d3d12_device))))
+		{
+			if (const auto device_proxy_12 = get_private_pointer_d3dx<D3D12Device>(d3d12_device.get()))
+			{
+				device_proxy->_d3d9on12_device = new Direct3DDevice9On12(device_proxy, device_proxy_12, d3d9on12_device);
+			}
+		}
 	}
 }
 
@@ -78,7 +78,7 @@ extern "C" IDirect3D9 *WINAPI Direct3DCreate9On12(UINT SDKVersion, D3D9ON12_ARGS
 		return nullptr;
 	}
 
-	reshade::hooks::install("IDirect3D9::CreateDevice", reshade::hooks::vtable_from_instance(res), 16, &IDirect3D9_CreateDevice);
+	reshade::hooks::install("IDirect3D9::CreateDevice", reshade::hooks::vtable_from_instance(res), 16, reinterpret_cast<reshade::hook::address>(&IDirect3D9_CreateDevice));
 
 #if RESHADE_VERBOSE_LOG
 	reshade::log::message(reshade::log::level::debug, "Returning IDirect3D9 object %p.", res);
@@ -129,8 +129,8 @@ extern "C"     HRESULT WINAPI Direct3DCreate9On12Ex(UINT SDKVersion, D3D9ON12_AR
 
 	assert(ppOutputInterface != nullptr);
 
-	reshade::hooks::install("IDirect3D9::CreateDevice", reshade::hooks::vtable_from_instance(*ppOutputInterface), 16, &IDirect3D9_CreateDevice);
-	reshade::hooks::install("IDirect3D9Ex::CreateDeviceEx", reshade::hooks::vtable_from_instance(*ppOutputInterface), 20, &IDirect3D9Ex_CreateDeviceEx);
+	reshade::hooks::install("IDirect3D9::CreateDevice", reshade::hooks::vtable_from_instance(*ppOutputInterface), 16, reinterpret_cast<reshade::hook::address>(&IDirect3D9_CreateDevice));
+	reshade::hooks::install("IDirect3D9Ex::CreateDeviceEx", reshade::hooks::vtable_from_instance(*ppOutputInterface), 20, reinterpret_cast<reshade::hook::address>(&IDirect3D9Ex_CreateDeviceEx));
 
 #if RESHADE_VERBOSE_LOG
 	reshade::log::message(reshade::log::level::debug, "Returning IDirect3D9Ex object %p.", *ppOutputInterface);

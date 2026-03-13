@@ -164,7 +164,7 @@ int wmain(int argc, wchar_t *argv[])
 		*load_path_filename = '\0';
 #endif
 	wcscat_s(arg.load_path, L"\\");
-	wcscat_s(arg.load_path, remote_is_wow64 ? L"ReShade32.dll" : L"ReShade64.dll");
+	wcscat_s(arg.load_path, remote_is_wow64 ? L"Mappy32.dll" : L"Mappy64.dll");
 
 	if (GetFileAttributesW(arg.load_path) == INVALID_FILE_ATTRIBUTES)
 	{

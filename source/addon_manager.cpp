@@ -10,7 +10,6 @@
 #include "dll_log.hpp"
 #include "ini_file.hpp"
 #include <algorithm> // std::find, std::find_if, std::remove, std::remove_if
-#include <Windows.h>
 
 extern void register_addon_depth();
 extern void register_addon_effect_runtime_sync();
@@ -24,110 +23,108 @@ extern std::filesystem::path get_module_path(HMODULE module);
 #if RESHADE_VERBOSE_LOG
 static const char *addon_event_to_string(reshade::addon_event ev)
 {
-	using reshade::addon_event;
+#define CASE(name) case reshade::addon_event::name: return #name
 	switch (ev)
 	{
-	case addon_event::init_device: return "init_device";
-	case addon_event::create_device: return "create_device";
-	case addon_event::destroy_device: return "destroy_device";
-	case addon_event::init_command_list: return "init_command_list";
-	case addon_event::destroy_command_list: return "destroy_command_list";
-	case addon_event::init_command_queue: return "init_command_queue";
-	case addon_event::destroy_command_queue: return "destroy_command_queue";
-	case addon_event::init_swapchain: return "init_swapchain";
-	case addon_event::create_swapchain: return "create_swapchain";
-	case addon_event::destroy_swapchain: return "destroy_swapchain";
-	case addon_event::init_effect_runtime: return "init_effect_runtime";
-	case addon_event::destroy_effect_runtime: return "destroy_effect_runtime";
-	case addon_event::init_sampler: return "init_sampler";
-	case addon_event::create_sampler: return "create_sampler";
-	case addon_event::destroy_sampler: return "destroy_sampler";
-	case addon_event::init_resource: return "init_resource";
-	case addon_event::create_resource: return "create_resource";
-	case addon_event::destroy_resource: return "destroy_resource";
-	case addon_event::init_resource_view: return "init_resource_view";
-	case addon_event::create_resource_view: return "create_resource_view";
-	case addon_event::destroy_resource_view: return "destroy_resource_view";
-	case addon_event::map_buffer_region: return "map_buffer_region";
-	case addon_event::unmap_buffer_region: return "unmap_buffer_region";
-	case addon_event::map_texture_region: return "map_texture_region";
-	case addon_event::unmap_texture_region: return "unmap_texture_region";
-	case addon_event::update_buffer_region: return "update_buffer_region";
-	case addon_event::update_buffer_region_command: return "update_buffer_region_command";
-	case addon_event::update_texture_region: return "update_texture_region";
-	case addon_event::update_texture_region_command: return "update_texture_region_command";
-	case addon_event::init_pipeline: return "init_pipeline";
-	case addon_event::create_pipeline: return "create_pipeline";
-	case addon_event::destroy_pipeline: return "destroy_pipeline";
-	case addon_event::init_pipeline_layout: return "init_pipeline_layout";
-	case addon_event::create_pipeline_layout: return "create_pipeline_layout";
-	case addon_event::destroy_pipeline_layout: return "destroy_pipeline_layout";
-	case addon_event::copy_descriptor_tables: return "copy_descriptor_tables";
-	case addon_event::update_descriptor_tables: return "update_descriptor_tables";
-	case addon_event::init_query_heap: return "init_query_heap";
-	case addon_event::create_query_heap: return "create_query_heap";
-	case addon_event::destroy_query_heap: return "destroy_query_heap";
-	case addon_event::get_query_heap_results: return "get_query_heap_results";
-	case addon_event::barrier: return "barrier";
-	case addon_event::begin_render_pass: return "begin_render_pass";
-	case addon_event::end_render_pass: return "end_render_pass";
-	case addon_event::bind_render_targets_and_depth_stencil: return "bind_render_targets_and_depth_stencil";
-	case addon_event::bind_pipeline: return "bind_pipeline";
-	case addon_event::bind_pipeline_states: return "bind_pipeline_states";
-	case addon_event::bind_viewports: return "bind_viewports";
-	case addon_event::bind_scissor_rects: return "bind_scissor_rects";
-	case addon_event::push_constants: return "push_constants";
-	case addon_event::push_descriptors: return "push_descriptors";
-	case addon_event::bind_descriptor_tables: return "bind_descriptor_tables";
-	case addon_event::bind_index_buffer: return "bind_index_buffer";
-	case addon_event::bind_vertex_buffers: return "bind_vertex_buffers";
-	case addon_event::bind_stream_output_buffers: return "bind_stream_output_buffers";
-	case addon_event::draw: return "draw";
-	case addon_event::draw_indexed: return "draw_indexed";
-	case addon_event::dispatch: return "dispatch";
-	case addon_event::dispatch_mesh: return "dispatch_mesh";
-	case addon_event::dispatch_rays: return "dispatch_rays";
-	case addon_event::draw_or_dispatch_indirect: return "draw_or_dispatch_indirect";
-	case addon_event::copy_resource: return "copy_resource";
-	case addon_event::copy_buffer_region: return "copy_buffer_region";
-	case addon_event::copy_buffer_to_texture: return "copy_buffer_to_texture";
-	case addon_event::copy_texture_region: return "copy_texture_region";
-	case addon_event::copy_texture_to_buffer: return "copy_texture_to_buffer";
-	case addon_event::resolve_texture_region: return "resolve_texture_region";
-	case addon_event::clear_depth_stencil_view: return "clear_depth_stencil_view";
-	case addon_event::clear_render_target_view: return "clear_render_target_view";
-	case addon_event::clear_unordered_access_view_uint: return "clear_unordered_access_view_uint";
-	case addon_event::clear_unordered_access_view_float: return "clear_unordered_access_view_float";
-	case addon_event::generate_mipmaps: return "generate_mipmaps";
-	case addon_event::begin_query: return "begin_query";
-	case addon_event::end_query: return "end_query";
-	case addon_event::copy_query_heap_results: return "copy_query_heap_results";
-	case addon_event::copy_acceleration_structure: return "copy_acceleration_structure";
-	case addon_event::build_acceleration_structure: return "build_acceleration_structure";
-	case addon_event::query_acceleration_structures: return "query_acceleration_structures";
-	case addon_event::reset_command_list: return "reset_command_list";
-	case addon_event::close_command_list: return "close_command_list";
-	case addon_event::execute_command_list: return "execute_command_list";
-	case addon_event::execute_secondary_command_list: return "execute_secondary_command_list";
-	case addon_event::present: return "present";
-	case addon_event::finish_present: return "finish_present";
-	case addon_event::set_fullscreen_state: return "set_fullscreen_state";
-	case addon_event::reshade_present: return "reshade_present";
-	case addon_event::reshade_begin_effects: return "reshade_begin_effects";
-	case addon_event::reshade_finish_effects: return "reshade_finish_effects";
-	case addon_event::reshade_reloaded_effects: return "reshade_reloaded_effects";
-	case addon_event::reshade_set_uniform_value: return "reshade_set_uniform_value";
-	case addon_event::reshade_set_technique_state: return "reshade_set_technique_state";
-	case addon_event::reshade_overlay: return "reshade_overlay";
-	case addon_event::reshade_screenshot: return "reshade_screenshot";
-	case addon_event::reshade_render_technique: return "reshade_render_technique";
-	case addon_event::reshade_set_effects_state: return "reshade_set_effects_state";
-	case addon_event::reshade_set_current_preset_path: return "reshade_set_current_preset_path";
-	case addon_event::reshade_reorder_techniques: return "reshade_reorder_techniques";
-	case addon_event::reshade_open_overlay: return "reshade_open_overlay";
-	case addon_event::reshade_overlay_uniform_variable: return "reshade_overlay_uniform_variable";
-	case addon_event::reshade_overlay_technique: return "reshade_overlay_technique";
+		CASE(init_device);
+		CASE(create_device);
+		CASE(destroy_device);
+		CASE(init_command_list);
+		CASE(destroy_command_list);
+		CASE(init_command_queue);
+		CASE(destroy_command_queue);
+		CASE(init_swapchain);
+		CASE(create_swapchain);
+		CASE(destroy_swapchain);
+		CASE(init_effect_runtime);
+		CASE(destroy_effect_runtime);
+		CASE(init_sampler);
+		CASE(create_sampler);
+		CASE(destroy_sampler);
+		CASE(init_resource);
+		CASE(create_resource);
+		CASE(destroy_resource);
+		CASE(init_resource_view);
+		CASE(create_resource_view);
+		CASE(destroy_resource_view);
+		CASE(map_buffer_region);
+		CASE(unmap_buffer_region);
+		CASE(map_texture_region);
+		CASE(unmap_texture_region);
+		CASE(update_buffer_region);
+		CASE(update_texture_region);
+		CASE(init_pipeline);
+		CASE(create_pipeline);
+		CASE(destroy_pipeline);
+		CASE(init_pipeline_layout);
+		CASE(create_pipeline_layout);
+		CASE(destroy_pipeline_layout);
+		CASE(copy_descriptor_tables);
+		CASE(update_descriptor_tables);
+		CASE(init_query_heap);
+		CASE(create_query_heap);
+		CASE(destroy_query_heap);
+		CASE(get_query_heap_results);
+		CASE(barrier);
+		CASE(begin_render_pass);
+		CASE(end_render_pass);
+		CASE(bind_render_targets_and_depth_stencil);
+		CASE(bind_pipeline);
+		CASE(bind_pipeline_states);
+		CASE(bind_viewports);
+		CASE(bind_scissor_rects);
+		CASE(push_constants);
+		CASE(push_descriptors);
+		CASE(bind_descriptor_tables);
+		CASE(bind_index_buffer);
+		CASE(bind_vertex_buffers);
+		CASE(bind_stream_output_buffers);
+		CASE(draw);
+		CASE(draw_indexed);
+		CASE(dispatch);
+		CASE(dispatch_mesh);
+		CASE(dispatch_rays);
+		CASE(draw_or_dispatch_indirect);
+		CASE(copy_resource);
+		CASE(copy_buffer_region);
+		CASE(copy_buffer_to_texture);
+		CASE(copy_texture_region);
+		CASE(copy_texture_to_buffer);
+		CASE(resolve_texture_region);
+		CASE(clear_depth_stencil_view);
+		CASE(clear_render_target_view);
+		CASE(clear_unordered_access_view_uint);
+		CASE(clear_unordered_access_view_float);
+		CASE(generate_mipmaps);
+		CASE(begin_query);
+		CASE(end_query);
+		CASE(copy_query_heap_results);
+		CASE(copy_acceleration_structure);
+		CASE(build_acceleration_structure);
+		CASE(query_acceleration_structures);
+		CASE(reset_command_list);
+		CASE(close_command_list);
+		CASE(execute_command_list);
+		CASE(execute_secondary_command_list);
+		CASE(present);
+		CASE(set_fullscreen_state);
+		CASE(reshade_present);
+		CASE(reshade_begin_effects);
+		CASE(reshade_finish_effects);
+		CASE(reshade_reloaded_effects);
+		CASE(reshade_set_uniform_value);
+		CASE(reshade_set_technique_state);
+		CASE(reshade_overlay);
+		CASE(reshade_screenshot);
+		CASE(reshade_render_technique);
+		CASE(reshade_set_effects_state);
+		CASE(reshade_set_current_preset_path);
+		CASE(reshade_reorder_techniques);
+		CASE(reshade_open_overlay);
+		CASE(reshade_overlay_uniform_variable);
+		CASE(reshade_overlay_technique);
 	}
+#undef  CASE
 	return "unknown";
 }
 #endif
@@ -138,7 +135,6 @@ bool reshade::addon_enabled = true;
 bool reshade::addon_all_loaded = true;
 std::vector<void *> reshade::addon_event_list[static_cast<uint32_t>(reshade::addon_event::max)];
 std::vector<reshade::addon_info> reshade::addon_loaded_info;
-thread_local const reshade::addon_info *reshade::addon_current = nullptr;
 static unsigned long s_reference_count = 0;
 
 void reshade::load_addons()
@@ -240,15 +236,6 @@ void reshade::load_addons()
 
 		log::message(log::level::warning, "Skipped loading add-on from '%s' because this build of ReShade has only limited add-on functionality.", path.u8string().c_str());
 #else
-		// Avoid loading library again that has already been loaded externally
-		if (const auto it =	std::find_if(addon_loaded_info.cbegin(), addon_loaded_info.cend(),
-				[&path](const addon_info &info) { return path.filename().u8string() == info.file; });
-			it != addon_loaded_info.cend())
-		{
-			assert(it->external);
-			continue;
-		}
-
 		// Avoid loading library altogether when it is found in the disabled add-on list
 		if (addon_info info;
 			std::find_if(disabled_addons.cbegin(), disabled_addons.cend(),
@@ -401,7 +388,7 @@ bool reshade::has_loaded_addons()
 		}) != addon_loaded_info.cend();
 }
 
-reshade::addon_info *reshade::find_addon(const void *address)
+reshade::addon_info *reshade::find_addon(void *address)
 {
 	if (address == nullptr)
 		return nullptr;
@@ -420,7 +407,7 @@ reshade::addon_info *reshade::find_addon(const void *address)
 
 #if defined(RESHADE_API_LIBRARY_EXPORT)
 
-bool ReShadeRegisterAddon(void *module, uint32_t api_version)
+bool ReShadeRegisterAddon(HMODULE module, uint32_t api_version)
 {
 	// Can only register an add-on module once
 	if (module == nullptr || module == g_module_handle || reshade::find_addon(module))
@@ -436,7 +423,7 @@ bool ReShadeRegisterAddon(void *module, uint32_t api_version)
 		return false;
 	}
 
-	const std::filesystem::path path = get_module_path(static_cast<HMODULE>(module));
+	const std::filesystem::path path = get_module_path(module);
 
 	reshade::addon_info info;
 	info.name = path.stem().u8string();
@@ -479,15 +466,13 @@ bool ReShadeRegisterAddon(void *module, uint32_t api_version)
 		}
 	}
 
-	if (const char *const *name = reinterpret_cast<const char *const *>(GetProcAddress(static_cast<HMODULE>(module), "NAME")))
+	if (const char *const *name = reinterpret_cast<const char *const *>(GetProcAddress(module, "NAME")))
 		info.name = *name;
-	if (const char *const *author = reinterpret_cast<const char *const *>(GetProcAddress(static_cast<HMODULE>(module), "AUTHOR")))
-		info.author = *author;
-	if (const char *const *description = reinterpret_cast<const char *const *>(GetProcAddress(static_cast<HMODULE>(module), "DESCRIPTION")))
+	if (const char *const *description = reinterpret_cast<const char *const *>(GetProcAddress(module, "DESCRIPTION")))
 		info.description = *description;
-	if (const char *const *website_url = reinterpret_cast<const char *const *>(GetProcAddress(static_cast<HMODULE>(module), "WEBSITE")))
+	if (const char *const *website_url = reinterpret_cast<const char *const *>(GetProcAddress(module, "WEBSITE")))
 		info.website_url = *website_url;
-	if (const char *const *issues_url = reinterpret_cast<const char *const *>(GetProcAddress(static_cast<HMODULE>(module), "ISSUES")))
+	if (const char *const *issues_url = reinterpret_cast<const char *const *>(GetProcAddress(module, "ISSUES")))
 		info.issues_url = *issues_url;
 
 	if (std::find_if(reshade::addon_loaded_info.cbegin(), reshade::addon_loaded_info.cend(),
@@ -521,7 +506,7 @@ bool ReShadeRegisterAddon(void *module, uint32_t api_version)
 
 	return true;
 }
-void ReShadeUnregisterAddon(void *module)
+void ReShadeUnregisterAddon(HMODULE module)
 {
 	if (module == nullptr || module == g_module_handle)
 		return;
@@ -555,7 +540,7 @@ void ReShadeRegisterEvent(reshade::addon_event ev, void *callback)
 {
 	ReShadeRegisterEventForAddon(nullptr, ev, callback);
 }
-void ReShadeRegisterEventForAddon(void *module, reshade::addon_event ev, void *callback)
+void ReShadeRegisterEventForAddon(HMODULE module, reshade::addon_event ev, void *callback)
 {
 	if (ev >= reshade::addon_event::max)
 		return;
@@ -591,7 +576,7 @@ void ReShadeUnregisterEvent(reshade::addon_event ev, void *callback)
 {
 	ReShadeUnregisterEventForAddon(nullptr, ev, callback);
 }
-void ReShadeUnregisterEventForAddon(void *module, reshade::addon_event ev, void *callback)
+void ReShadeUnregisterEventForAddon(HMODULE module, reshade::addon_event ev, void *callback)
 {
 	if (ev >= reshade::addon_event::max)
 		return;
@@ -623,7 +608,7 @@ void ReShadeRegisterOverlay(const char *title, void(*callback)(reshade::api::eff
 {
 	ReShadeRegisterOverlayForAddon(nullptr, title, callback);
 }
-void ReShadeRegisterOverlayForAddon(void *module, const char *title, void(*callback)(reshade::api::effect_runtime *runtime))
+void ReShadeRegisterOverlayForAddon(HMODULE module, const char *title, void(*callback)(reshade::api::effect_runtime *runtime))
 {
 	reshade::addon_info *const info = reshade::find_addon(module != nullptr ? module : static_cast<void *>(callback));
 	if (info == nullptr)
@@ -650,7 +635,7 @@ void ReShadeUnregisterOverlay(const char *title, void(*callback)(reshade::api::e
 {
 	ReShadeUnregisterOverlayForAddon(nullptr, title, callback);
 }
-void ReShadeUnregisterOverlayForAddon(void *module, const char *title, void(*callback)(reshade::api::effect_runtime *runtime))
+void ReShadeUnregisterOverlayForAddon(HMODULE module, const char *title, void(*callback)(reshade::api::effect_runtime *runtime))
 {
 	reshade::addon_info *const info = reshade::find_addon(module != nullptr ? module : static_cast<void *>(callback));
 	if (info == nullptr)

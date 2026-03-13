@@ -16,10 +16,12 @@ void STDMETHODCALLTYPE ID3D10Resource_GetDevice(ID3D10Resource *pResource, ID3D1
 	assert(device != nullptr);
 
 	const auto device_proxy = get_private_pointer_d3dx<D3D10Device>(device);
-	if (device_proxy != nullptr && device_proxy->_orig == device)
+	if (device_proxy != nullptr)
 	{
-		InterlockedIncrement(&device_proxy->_ref);
+		assert(device != device_proxy);
+
 		*ppDevice = device_proxy;
+		InterlockedIncrement(&device_proxy->_ref);
 	}
 }
 

@@ -26,11 +26,11 @@ auto reshade::d3d11::convert_color_space(api::color_space type) -> DXGI_COLOR_SP
 	default:
 		assert(false);
 		[[fallthrough]];
-	case api::color_space::srgb:
+	case api::color_space::srgb_nonlinear:
 		return DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
-	case api::color_space::scrgb:
+	case api::color_space::extended_srgb_linear:
 		return DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
-	case api::color_space::hdr10_pq:
+	case api::color_space::hdr10_st2084:
 		return DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
 	case api::color_space::hdr10_hlg:
 		return DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020;
@@ -40,74 +40,71 @@ auto reshade::d3d11::convert_color_space(DXGI_COLOR_SPACE_TYPE type) -> api::col
 {
 	switch (type)
 	{
-	case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709:
-		return api::color_space::srgb;
-	case DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709:
-		return api::color_space::scrgb;
-	case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
-		return api::color_space::hdr10_pq;
-	case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020:
-		return api::color_space::hdr10_hlg;
 	default:
 		assert(false);
 		return api::color_space::unknown;
+	case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709:
+		return api::color_space::srgb_nonlinear;
+	case DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709:
+		return api::color_space::extended_srgb_linear;
+	case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+		return api::color_space::hdr10_st2084;
+	case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020:
+		return api::color_space::hdr10_hlg;
 	}
 }
 
-static void convert_memory_heap_to_d3d_usage(reshade::api::memory_heap heap, reshade::api::resource_flags flags, D3D11_USAGE &usage, UINT &cpu_access_flags)
+static void convert_memory_heap_to_d3d_usage(reshade::api::memory_heap heap, D3D11_USAGE &usage, UINT &cpu_access_flags)
 {
 	using namespace reshade;
 
 	switch (heap)
 	{
-	case api::memory_heap::default_:
+	case api::memory_heap::gpu_only:
 		if (usage == D3D11_USAGE_IMMUTABLE)
 			break;
-		usage = (flags & api::resource_flags::immutable) != 0 ? D3D11_USAGE_IMMUTABLE : D3D11_USAGE_DEFAULT;
+		usage = D3D11_USAGE_DEFAULT;
 		break;
-	case api::memory_heap::upload:
+	case api::memory_heap::cpu_to_gpu:
+		if (usage == D3D11_USAGE_DEFAULT && cpu_access_flags == D3D11_CPU_ACCESS_WRITE)
+			break;
 		usage = D3D11_USAGE_DYNAMIC;
 		cpu_access_flags |= D3D11_CPU_ACCESS_WRITE;
 		break;
-	case api::memory_heap::readback:
+	case api::memory_heap::gpu_to_cpu:
 		usage = D3D11_USAGE_STAGING;
 		cpu_access_flags |= D3D11_CPU_ACCESS_READ;
 		break;
-	case api::memory_heap::scratch:
+	case api::memory_heap::cpu_only:
 		usage = D3D11_USAGE_STAGING;
-		if (cpu_access_flags == 0)
-			cpu_access_flags |= D3D11_CPU_ACCESS_READ | D3D11_CPU_ACCESS_WRITE;
-		break;
-	case api::memory_heap::custom:
-	case api::memory_heap::gpu_upload:
-		usage = D3D11_USAGE_DEFAULT;
 		if (cpu_access_flags == 0)
 			cpu_access_flags |= D3D11_CPU_ACCESS_READ | D3D11_CPU_ACCESS_WRITE;
 		break;
 	}
 }
-static void convert_d3d_usage_to_memory_heap(D3D11_USAGE usage, UINT cpu_access_flags, reshade::api::memory_heap &heap, reshade::api::resource_flags &flags)
+static void convert_d3d_usage_to_memory_heap(D3D11_USAGE usage, UINT cpu_access_flags, reshade::api::memory_heap &heap)
 {
 	using namespace reshade;
 
 	switch (usage)
 	{
 	case D3D11_USAGE_DEFAULT:
-		// The D3D11_FEATURE_DATA_D3D11_OPTIONS1::MapOnDefaultBuffers and D3D11_FEATURE_DATA_D3D11_OPTIONS2::MapOnDefaultTextures features allow default usage in combination with CPU access flags
-		heap = cpu_access_flags != 0 ? api::memory_heap::gpu_upload : api::memory_heap::default_;
-		break;
+		if (cpu_access_flags == D3D11_CPU_ACCESS_WRITE)
+		{
+			heap = api::memory_heap::cpu_to_gpu;
+			break;
+		}
+		[[fallthrough]];
 	case D3D11_USAGE_IMMUTABLE:
 		assert(cpu_access_flags == 0);
-		heap = api::memory_heap::default_;
-		flags |= api::resource_flags::immutable;
+		heap = api::memory_heap::gpu_only;
 		break;
 	case D3D11_USAGE_DYNAMIC:
 		assert(cpu_access_flags == D3D11_CPU_ACCESS_WRITE);
-		heap = api::memory_heap::upload;
-		flags |= api::resource_flags::dynamic;
+		heap = api::memory_heap::cpu_to_gpu;
 		break;
 	case D3D11_USAGE_STAGING:
-		heap = cpu_access_flags == D3D11_CPU_ACCESS_READ ? api::memory_heap::readback : api::memory_heap::scratch;
+		heap = cpu_access_flags == D3D11_CPU_ACCESS_READ ? api::memory_heap::gpu_to_cpu : api::memory_heap::cpu_only;
 		break;
 	}
 }
@@ -291,7 +288,7 @@ void reshade::d3d11::convert_resource_desc(const api::resource_desc &desc, D3D11
 	assert(desc.type == api::resource_type::buffer);
 	assert(desc.buffer.size <= std::numeric_limits<UINT>::max());
 	internal_desc.ByteWidth = static_cast<UINT>(desc.buffer.size);
-	convert_memory_heap_to_d3d_usage(desc.heap, desc.flags, internal_desc.Usage, internal_desc.CPUAccessFlags);
+	convert_memory_heap_to_d3d_usage(desc.heap, internal_desc.Usage, internal_desc.CPUAccessFlags);
 	convert_resource_usage_to_bind_flags(desc.usage, internal_desc.BindFlags);
 	convert_resource_flags_to_misc_flags(desc.flags, internal_desc.MiscFlags);
 	internal_desc.StructureByteStride = desc.buffer.stride;
@@ -313,7 +310,7 @@ void reshade::d3d11::convert_resource_desc(const api::resource_desc &desc, D3D11
 	internal_desc.ArraySize = desc.texture.depth_or_layers;
 	internal_desc.Format = convert_format(desc.texture.format);
 	assert(desc.texture.samples == 1);
-	convert_memory_heap_to_d3d_usage(desc.heap, desc.flags, internal_desc.Usage, internal_desc.CPUAccessFlags);
+	convert_memory_heap_to_d3d_usage(desc.heap, internal_desc.Usage, internal_desc.CPUAccessFlags);
 	convert_resource_usage_to_bind_flags(desc.usage, internal_desc.BindFlags);
 	convert_resource_flags_to_misc_flags(desc.flags, internal_desc.MiscFlags);
 
@@ -330,7 +327,7 @@ void reshade::d3d11::convert_resource_desc(const api::resource_desc &desc, D3D11
 	internal_desc.ArraySize = desc.texture.depth_or_layers;
 	internal_desc.Format = convert_format(desc.texture.format);
 	internal_desc.SampleDesc.Count = desc.texture.samples;
-	convert_memory_heap_to_d3d_usage(desc.heap, desc.flags, internal_desc.Usage, internal_desc.CPUAccessFlags);
+	convert_memory_heap_to_d3d_usage(desc.heap, internal_desc.Usage, internal_desc.CPUAccessFlags);
 	convert_resource_usage_to_bind_flags(desc.usage, internal_desc.BindFlags);
 	convert_resource_flags_to_misc_flags(desc.flags, internal_desc.MiscFlags);
 
@@ -351,7 +348,7 @@ void reshade::d3d11::convert_resource_desc(const api::resource_desc &desc, D3D11
 	internal_desc.MipLevels = desc.texture.levels;
 	internal_desc.Format = convert_format(desc.texture.format);
 	assert(desc.texture.samples == 1);
-	convert_memory_heap_to_d3d_usage(desc.heap, desc.flags, internal_desc.Usage, internal_desc.CPUAccessFlags);
+	convert_memory_heap_to_d3d_usage(desc.heap, internal_desc.Usage, internal_desc.CPUAccessFlags);
 	convert_resource_usage_to_bind_flags(desc.usage, internal_desc.BindFlags);
 	convert_resource_flags_to_misc_flags(desc.flags, internal_desc.MiscFlags);
 
@@ -369,9 +366,12 @@ reshade::api::resource_desc reshade::d3d11::convert_resource_desc(const D3D11_BU
 	desc.type = api::resource_type::buffer;
 	desc.buffer.size = internal_desc.ByteWidth;
 	desc.buffer.stride = 0; // Clear value that was set by default constructor of 'resource_desc'
-	convert_d3d_usage_to_memory_heap(internal_desc.Usage, internal_desc.CPUAccessFlags, desc.heap, desc.flags);
+	convert_d3d_usage_to_memory_heap(internal_desc.Usage, internal_desc.CPUAccessFlags, desc.heap);
 	convert_bind_flags_to_resource_usage(internal_desc.BindFlags, desc.usage);
 	convert_misc_flags_to_resource_flags(internal_desc.MiscFlags, desc.flags);
+
+	if (internal_desc.Usage == D3D11_USAGE_DYNAMIC)
+		desc.flags |= api::resource_flags::dynamic;
 
 	if ((internal_desc.MiscFlags & D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS) != 0)
 		desc.usage |= api::resource_usage::indirect_argument;
@@ -396,9 +396,12 @@ reshade::api::resource_desc reshade::d3d11::convert_resource_desc(const D3D11_TE
 	desc.texture.levels = static_cast<uint16_t>(internal_desc.MipLevels);
 	desc.texture.format = convert_format(internal_desc.Format);
 	desc.texture.samples = 1;
-	convert_d3d_usage_to_memory_heap(internal_desc.Usage, internal_desc.CPUAccessFlags, desc.heap, desc.flags);
+	convert_d3d_usage_to_memory_heap(internal_desc.Usage, internal_desc.CPUAccessFlags, desc.heap);
 	convert_bind_flags_to_resource_usage(internal_desc.BindFlags, desc.usage);
 	convert_misc_flags_to_resource_flags(internal_desc.MiscFlags, desc.flags);
+
+	if (internal_desc.Usage == D3D11_USAGE_DYNAMIC)
+		desc.flags |= api::resource_flags::dynamic;
 
 	return desc;
 }
@@ -414,10 +417,13 @@ reshade::api::resource_desc reshade::d3d11::convert_resource_desc(const D3D11_TE
 	desc.texture.levels = static_cast<uint16_t>(internal_desc.MipLevels);
 	desc.texture.format = convert_format(internal_desc.Format);
 	desc.texture.samples = static_cast<uint16_t>(internal_desc.SampleDesc.Count);
-	convert_d3d_usage_to_memory_heap(internal_desc.Usage, internal_desc.CPUAccessFlags, desc.heap, desc.flags);
+	convert_d3d_usage_to_memory_heap(internal_desc.Usage, internal_desc.CPUAccessFlags, desc.heap);
 	convert_bind_flags_to_resource_usage(internal_desc.BindFlags, desc.usage);
 	desc.usage |= desc.texture.samples > 1 ? api::resource_usage::resolve_source : api::resource_usage::resolve_dest;
 	convert_misc_flags_to_resource_flags(internal_desc.MiscFlags, desc.flags);
+
+	if (internal_desc.Usage == D3D11_USAGE_DYNAMIC)
+		desc.flags |= api::resource_flags::dynamic;
 
 	return desc;
 }
@@ -438,9 +444,12 @@ reshade::api::resource_desc reshade::d3d11::convert_resource_desc(const D3D11_TE
 	desc.texture.levels = static_cast<uint16_t>(internal_desc.MipLevels);
 	desc.texture.format = convert_format(internal_desc.Format);
 	desc.texture.samples = 1;
-	convert_d3d_usage_to_memory_heap(internal_desc.Usage, internal_desc.CPUAccessFlags, desc.heap, desc.flags);
+	convert_d3d_usage_to_memory_heap(internal_desc.Usage, internal_desc.CPUAccessFlags, desc.heap);
 	convert_bind_flags_to_resource_usage(internal_desc.BindFlags, desc.usage);
 	convert_misc_flags_to_resource_flags(internal_desc.MiscFlags, desc.flags);
+
+	if (internal_desc.Usage == D3D11_USAGE_DYNAMIC)
+		desc.flags |= api::resource_flags::dynamic;
 
 	return desc;
 }
@@ -712,7 +721,7 @@ void reshade::d3d11::convert_resource_view_desc(const api::resource_view_desc &d
 	if (desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_array)
 	{
 		internal_desc.Format = convert_format(desc.format);
-		assert(desc.texture.level_count == 1);
+		assert(desc.type == api::resource_view_type::buffer || desc.texture.level_count == 1);
 		switch (desc.type)
 		{
 		case api::resource_view_type::texture_2d:
@@ -1071,7 +1080,7 @@ void reshade::d3d11::convert_blend_desc(const api::blend_desc &desc, D3D11_BLEND
 			desc.render_target_write_mask[i] != desc.render_target_write_mask[0])
 			internal_desc.IndependentBlendEnable = TRUE;
 
-		assert(!desc.logic_op_enable[i]);
+		assert(!desc.logic_op_enable);
 
 		internal_desc.RenderTarget[i].BlendEnable = desc.blend_enable[i];
 		internal_desc.RenderTarget[i].SrcBlend = convert_blend_factor(desc.source_color_blend_factor[i]);
@@ -1144,7 +1153,7 @@ reshade::api::blend_desc reshade::d3d11::convert_blend_desc(const D3D11_BLEND_DE
 	}
 	else
 	{
-		// Default blend state (https://learn.microsoft.com/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc)
+		// Default blend state (https://docs.microsoft.com/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc)
 		for (UINT i = 0; i < 8; ++i)
 		{
 			desc.source_color_blend_factor[i] = api::blend_factor::one;
@@ -1196,7 +1205,7 @@ reshade::api::blend_desc reshade::d3d11::convert_blend_desc(const D3D11_BLEND_DE
 	}
 	else
 	{
-		// Default blend state (https://learn.microsoft.com/windows/win32/api/d3d11_1/ns-d3d11_1-d3d11_blend_desc1)
+		// Default blend state (https://docs.microsoft.com/windows/win32/api/d3d11_1/ns-d3d11_1-d3d11_blend_desc1)
 		for (UINT i = 0; i < 8; ++i)
 		{
 			desc.source_color_blend_factor[i] = api::blend_factor::one;
@@ -1258,7 +1267,7 @@ reshade::api::rasterizer_desc reshade::d3d11::convert_rasterizer_desc(const D3D1
 	}
 	else
 	{
-		// Default rasterizer state (https://learn.microsoft.com/windows/win32/api/d3d11/ns-d3d11-d3d11_rasterizer_desc)
+		// Default rasterizer state (https://docs.microsoft.com/windows/win32/api/d3d11/ns-d3d11-d3d11_rasterizer_desc)
 		desc.fill_mode = api::fill_mode::solid;
 		desc.cull_mode = api::cull_mode::back;
 		desc.depth_clip_enable = true;
@@ -1329,7 +1338,7 @@ reshade::api::depth_stencil_desc reshade::d3d11::convert_depth_stencil_desc(cons
 	}
 	else
 	{
-		// Default depth-stencil state (https://learn.microsoft.com/windows/win32/api/d3d11/ns-d3d11-d3d11_depth_stencil_desc)
+		// Default depth-stencil state (https://docs.microsoft.com/windows/win32/api/d3d11/ns-d3d11-d3d11_depth_stencil_desc)
 		desc.depth_enable = true;
 		desc.depth_write_mask = true;
 		desc.depth_func = api::compare_op::less;

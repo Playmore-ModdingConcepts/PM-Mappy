@@ -10,9 +10,6 @@
 #include "dll_log.hpp" // Include late to get 'hr_to_string' helper function
 #include "hook_manager.hpp"
 #include "input.hpp"
-#include "lockfree_linear_map.hpp"
-
-lockfree_linear_map<IUnknown *, BYTE, 64> g_dinput_device_type;
 
 #define IDirectInputDevice8_GetDeviceState_Impl(vtable_index, encoding) \
 	HRESULT STDMETHODCALLTYPE IDirectInputDevice8##encoding##_GetDeviceState(IDirectInputDevice8##encoding *pDevice, DWORD cbData, LPVOID lpvData) \
@@ -20,7 +17,10 @@ lockfree_linear_map<IUnknown *, BYTE, 64> g_dinput_device_type;
 		const HRESULT hr = reshade::hooks::call(IDirectInputDevice8##encoding##_GetDeviceState, reshade::hooks::vtable_from_instance(pDevice) + vtable_index)(pDevice, cbData, lpvData); \
 		if (SUCCEEDED(hr)) \
 		{ \
-			switch (g_dinput_device_type.at(pDevice)) \
+			DIDEVCAPS caps = { sizeof(caps) }; \
+			pDevice->GetCapabilities(&caps); \
+			\
+			switch (LOBYTE(caps.dwDevType)) \
 			{ \
 			case DI8DEVTYPE_MOUSE: \
 				if (reshade::input::is_blocking_any_mouse_input() && (cbData == sizeof(DIMOUSESTATE) || cbData == sizeof(DIMOUSESTATE2))) \
@@ -49,7 +49,10 @@ IDirectInputDevice8_GetDeviceState_Impl(9, W)
 			(dwFlags & DIGDD_PEEK) == 0 && \
 			(rgdod != nullptr && *pdwInOut != 0)) \
 		{ \
-			switch (g_dinput_device_type.at(pDevice)) \
+			DIDEVCAPS caps = { sizeof(caps) }; \
+			pDevice->GetCapabilities(&caps); \
+			\
+			switch (LOBYTE(caps.dwDevType)) \
 			{ \
 			case DI8DEVTYPE_MOUSE: \
 				if (reshade::input::is_blocking_any_mouse_input()) \
@@ -84,22 +87,8 @@ IDirectInputDevice8_GetDeviceData_Impl(10, W)
 		const HRESULT hr = reshade::hooks::call(IDirectInput8##encoding##_CreateDevice, reshade::hooks::vtable_from_instance(pDI) + vtable_index)(pDI, rguid, lplpDirectInputDevice, pUnkOuter); \
 		if (SUCCEEDED(hr)) \
 		{ \
-			const LPDIRECTINPUTDEVICE8##encoding device = *lplpDirectInputDevice; \
-			\
-			/* DIDEVICEINSTANCE##encoding instance = { sizeof(instance) }; \
-			   device->GetDeviceInfo(&instance); \
-			   const BYTE device_type = GET_DIDEVICE_TYPE(instance.dwDevType); */ \
-			const BYTE device_type = \
-				(rguid == GUID_SysMouse) ? DI8DEVTYPE_MOUSE : \
-				(rguid == GUID_SysKeyboard) ? DI8DEVTYPE_KEYBOARD : 0; \
-			g_dinput_device_type.emplace(device, device_type); \
-			\
-			/* Only install vtable hooks for mouse and keyboard devices, since others are not all proxied by the Steam overlay and thus would hook both Steam overlay and the original DirectInput entries. */ \
-			if (device_type == DI8DEVTYPE_MOUSE || device_type == DI8DEVTYPE_KEYBOARD) \
-			{ \
-				reshade::hooks::install("IDirectInputDevice8" #encoding "::GetDeviceState", reshade::hooks::vtable_from_instance(device), 9, &IDirectInputDevice8##encoding##_GetDeviceState); \
-				reshade::hooks::install("IDirectInputDevice8" #encoding "::GetDeviceData", reshade::hooks::vtable_from_instance(device), 10, &IDirectInputDevice8##encoding##_GetDeviceData); \
-			} \
+			reshade::hooks::install("IDirectInputDevice8" #encoding "::GetDeviceState", reshade::hooks::vtable_from_instance(*lplpDirectInputDevice), 9, reinterpret_cast<reshade::hook::address>(&IDirectInputDevice8##encoding##_GetDeviceState)); \
+			reshade::hooks::install("IDirectInputDevice8" #encoding "::GetDeviceData", reshade::hooks::vtable_from_instance(*lplpDirectInputDevice), 10, reinterpret_cast<reshade::hook::address>(&IDirectInputDevice8##encoding##_GetDeviceData)); \
 		} \
 		else \
 		{ \
@@ -128,9 +117,9 @@ extern "C" HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, R
 	IUnknown *const factory = static_cast<IUnknown *>(*ppvOut);
 
 	if (riidltf == IID_IDirectInput8W)
-		reshade::hooks::install("IDirectInput8W::CreateDevice", reshade::hooks::vtable_from_instance(static_cast<IDirectInput8W *>(factory)), 3, &IDirectInput8W_CreateDevice);
+		reshade::hooks::install("IDirectInput8W::CreateDevice", reshade::hooks::vtable_from_instance(static_cast<IDirectInput8W *>(factory)), 3, reinterpret_cast<reshade::hook::address>(&IDirectInput8W_CreateDevice));
 	if (riidltf == IID_IDirectInput8A)
-		reshade::hooks::install("IDirectInput8A::CreateDevice", reshade::hooks::vtable_from_instance(static_cast<IDirectInput8A *>(factory)), 3, &IDirectInput8A_CreateDevice);
+		reshade::hooks::install("IDirectInput8A::CreateDevice", reshade::hooks::vtable_from_instance(static_cast<IDirectInput8A *>(factory)), 3, reinterpret_cast<reshade::hook::address>(&IDirectInput8A_CreateDevice));
 
 	return hr;
 }

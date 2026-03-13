@@ -10,6 +10,21 @@
 #include <cstring> // std::memcpy
 #include <algorithm> // std::copy_n, std::min
 
+const RECT *convert_box_to_rect(const reshade::api::subresource_box *box, RECT &rect)
+{
+	if (box == nullptr)
+		return nullptr;
+
+	rect.left = static_cast<LONG>(box->left);
+	rect.top = static_cast<LONG>(box->top);
+	assert(box->front == 0);
+	rect.right = static_cast<LONG>(box->right);
+	rect.bottom = static_cast<LONG>(box->bottom);
+	assert(box->back == 1);
+
+	return &rect;
+}
+
 static bool convert_format_internal(reshade::api::format format, D3DFORMAT &internal_format)
 {
 	if (format == reshade::api::format::r8_typeless || format == reshade::api::format::r8_unorm ||
@@ -161,13 +176,6 @@ bool reshade::d3d9::device_impl::get_property(api::device_properties property, v
 			return true;
 		}
 		return false;
-	case api::device_properties::adapter_luid:
-		if (com_ptr<IDirect3D9Ex> d3dex;
-			SUCCEEDED(_d3d->QueryInterface(IID_PPV_ARGS(&d3dex))))
-		{
-			return SUCCEEDED(d3dex->GetAdapterLUID(_cp.AdapterOrdinal, static_cast<LUID *>(data)));
-		}
-		return false;
 	default:
 		return false;
 	}
@@ -218,11 +226,6 @@ bool reshade::d3d9::device_impl::check_capability(api::device_caps capability) c
 	case api::device_caps::shared_fence_nt_handle:
 	case api::device_caps::amplification_and_mesh_shader:
 	case api::device_caps::ray_tracing:
-		return false;
-	case api::device_caps::update_buffer_region_command:
-	case api::device_caps::update_texture_region_command:
-		return true;
-	case api::device_caps::gpu_upload_heap:
 	default:
 		return false;
 	}
@@ -234,9 +237,6 @@ bool reshade::d3d9::device_impl::check_format_support(api::format format, api::r
 
 	DWORD d3d_usage = 0;
 	convert_resource_usage_to_d3d_usage(usage, d3d_usage);
-	if (format != api::format_to_default_typed(format, 0) &&
-		format == api::format_to_default_typed(format, 1))
-		d3d_usage |= D3DUSAGE_QUERY_SRGBREAD | D3DUSAGE_QUERY_SRGBWRITE;
 
 	const D3DFORMAT d3d_format = convert_format(format);
 	return d3d_format != D3DFMT_UNKNOWN && SUCCEEDED(_d3d->CheckDeviceFormat(_cp.AdapterOrdinal, _cp.DeviceType, D3DFMT_X8R8G8B8, d3d_usage, D3DRTYPE_TEXTURE, d3d_format));
@@ -276,12 +276,12 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 
 	switch (desc.type)
 	{
-	case api::resource_type::buffer:
+		case api::resource_type::buffer:
 		{
 			// Direct3D 9 only supports separate vertex and index buffers
 			switch (desc.usage & (api::resource_usage::vertex_buffer | api::resource_usage::index_buffer | api::resource_usage::constant_buffer))
 			{
-			case api::resource_usage::index_buffer:
+				case api::resource_usage::index_buffer:
 				{
 					D3DINDEXBUFFER_DESC internal_desc = {};
 					convert_resource_desc(desc, internal_desc);
@@ -297,9 +297,9 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 						}
 						return true;
 					}
+					break;
 				}
-				break;
-			case api::resource_usage::vertex_buffer:
+				case api::resource_usage::vertex_buffer:
 				{
 					D3DVERTEXBUFFER_DESC internal_desc = {};
 					convert_resource_desc(desc, internal_desc);
@@ -315,13 +315,13 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 						}
 						return true;
 					}
+					break;
 				}
-				break;
 			}
+			break;
 		}
-		break;
-	case api::resource_type::texture_1d:
-	case api::resource_type::texture_2d:
+		case api::resource_type::texture_1d:
+		case api::resource_type::texture_2d:
 		{
 			// Array or multisample textures are not supported in Direct3D 9
 			if ((desc.texture.depth_or_layers != 1 && (desc.flags & api::resource_flags::cube_compatible) == 0) || desc.texture.samples != 1)
@@ -366,9 +366,9 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 					return true;
 				}
 			}
+			break;
 		}
-		break;
-	case api::resource_type::texture_3d:
+		case api::resource_type::texture_3d:
 		{
 			// 3D textures can never have multisampling
 			if (desc.texture.samples != 1)
@@ -393,9 +393,9 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 				}
 				return true;
 			}
+			break;
 		}
-		break;
-	case api::resource_type::surface:
+		case api::resource_type::surface:
 		{
 			// Surfaces can never be arrays or have mipmap levels
 			if (desc.texture.depth_or_layers != 1 || desc.texture.levels != 1)
@@ -405,9 +405,9 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 
 			switch (desc.usage & (api::resource_usage::depth_stencil | api::resource_usage::render_target))
 			{
-			case api::resource_usage::depth_stencil:
-			case api::resource_usage::depth_stencil_read:
-			case api::resource_usage::depth_stencil_write:
+				case api::resource_usage::depth_stencil:
+				case api::resource_usage::depth_stencil_read:
+				case api::resource_usage::depth_stencil_write:
 				{
 					D3DSURFACE_DESC internal_desc = {};
 					convert_resource_desc(desc, internal_desc, nullptr, nullptr, _caps);
@@ -421,9 +421,9 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 						*out_resource = { reinterpret_cast<uintptr_t>(object.release()) };
 						return true;
 					}
+					break;
 				}
-				break;
-			case api::resource_usage::render_target:
+				case api::resource_usage::render_target:
 				{
 					BOOL lockable = FALSE;
 					D3DSURFACE_DESC internal_desc = {};
@@ -438,9 +438,9 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 						*out_resource = { reinterpret_cast<uintptr_t>(object.release()) };
 						return true;
 					}
+					break;
 				}
-				break;
-			default:
+				default:
 				{
 					D3DSURFACE_DESC internal_desc = {};
 					convert_resource_desc(desc, internal_desc, nullptr, nullptr, _caps);
@@ -453,11 +453,11 @@ bool reshade::d3d9::device_impl::create_resource(const api::resource_desc &desc,
 						*out_resource = { reinterpret_cast<uintptr_t>(object.release()) };
 						return true;
 					}
+					break;
 				}
-				break;
 			}
+			break;
 		}
-		break;
 	}
 
 	return false;
@@ -476,16 +476,15 @@ reshade::api::resource_desc reshade::d3d9::device_impl::get_resource_desc(api::r
 
 	switch (IDirect3DResource9_GetType(object))
 	{
-	case D3DRTYPE_SURFACE:
+		case D3DRTYPE_SURFACE:
 		{
 			D3DSURFACE_DESC internal_desc;
 			IDirect3DSurface9_GetDesc(static_cast<IDirect3DSurface9 *>(object), &internal_desc);
 
 			return convert_resource_desc(internal_desc, 1, FALSE, _caps);
 		}
-	case D3DRTYPE_TEXTURE:
+		case D3DRTYPE_TEXTURE:
 		{
-			// Note: This fails for any mipmap level but the first one for textures with D3DUSAGE_AUTOGENMIPMAP, since in that case the D3D runtime does not have surfaces for those
 			D3DSURFACE_DESC internal_desc;
 			IDirect3DTexture9_GetLevelDesc(static_cast<IDirect3DTexture9 *>(object), 0, &internal_desc);
 			internal_desc.Type = D3DRTYPE_TEXTURE;
@@ -494,7 +493,7 @@ reshade::api::resource_desc reshade::d3d9::device_impl::get_resource_desc(api::r
 
 			return convert_resource_desc(internal_desc, levels, FALSE, _caps);
 		}
-	case D3DRTYPE_VOLUMETEXTURE:
+		case D3DRTYPE_VOLUMETEXTURE:
 		{
 			D3DVOLUME_DESC internal_desc;
 			IDirect3DVolumeTexture9_GetLevelDesc(static_cast<IDirect3DVolumeTexture9 *>(object), 0, &internal_desc);
@@ -504,7 +503,7 @@ reshade::api::resource_desc reshade::d3d9::device_impl::get_resource_desc(api::r
 
 			return convert_resource_desc(internal_desc, levels);
 		}
-	case D3DRTYPE_CUBETEXTURE:
+		case D3DRTYPE_CUBETEXTURE:
 		{
 			D3DSURFACE_DESC internal_desc;
 			IDirect3DCubeTexture9_GetLevelDesc(static_cast<IDirect3DCubeTexture9 *>(object), 0, &internal_desc);
@@ -514,26 +513,24 @@ reshade::api::resource_desc reshade::d3d9::device_impl::get_resource_desc(api::r
 
 			return convert_resource_desc(internal_desc, levels, FALSE, _caps);
 		}
-	case D3DRTYPE_VERTEXBUFFER:
+		case D3DRTYPE_VERTEXBUFFER:
 		{
 			D3DVERTEXBUFFER_DESC internal_desc;
 			IDirect3DVertexBuffer9_GetDesc(static_cast<IDirect3DVertexBuffer9 *>(object), &internal_desc);
 
 			return convert_resource_desc(internal_desc);
 		}
-	case D3DRTYPE_INDEXBUFFER:
+		case D3DRTYPE_INDEXBUFFER:
 		{
 			D3DINDEXBUFFER_DESC internal_desc;
 			IDirect3DIndexBuffer9_GetDesc(static_cast<IDirect3DIndexBuffer9 *>(object), &internal_desc);
 
 			return convert_resource_desc(internal_desc);
 		}
-	default:
-		{
-			assert(false); // Not implemented
-			return api::resource_desc();
-		}
 	}
+
+	assert(false); // Not implemented
+	return api::resource_desc {};
 }
 
 bool reshade::d3d9::device_impl::create_resource_view(api::resource resource, api::resource_usage usage_type, const api::resource_view_desc &desc, api::resource_view *out_view)
@@ -557,167 +554,175 @@ bool reshade::d3d9::device_impl::create_resource_view(api::resource resource, ap
 
 	switch (IDirect3DResource9_GetType(object))
 	{
-	case D3DRTYPE_SURFACE:
-		if (usage_type == api::resource_usage::depth_stencil || usage_type == api::resource_usage::render_target || usage_type == api::resource_usage::undefined)
+		case D3DRTYPE_SURFACE:
 		{
-			if (desc.type != api::resource_view_type::unknown)
+			if (usage_type == api::resource_usage::depth_stencil || usage_type == api::resource_usage::render_target || usage_type == api::resource_usage::undefined)
 			{
-				assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
-				assert(desc.texture.first_layer == 0 && (desc.texture.layer_count == 1 || desc.texture.layer_count == UINT32_MAX));
+				if (desc.type != api::resource_view_type::unknown)
+				{
+					assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
+					assert(desc.texture.first_layer == 0 && (desc.texture.layer_count == 1 || desc.texture.layer_count == UINT32_MAX));
 
-				if (desc.texture.first_level != 0 || (desc.texture.level_count != 1 && desc.texture.level_count != UINT32_MAX))
-					break;
+					if (desc.texture.first_level != 0 || (desc.texture.level_count != 1 && desc.texture.level_count != UINT32_MAX))
+						break;
 
-				D3DSURFACE_DESC internal_desc;
-				if (FAILED(IDirect3DSurface9_GetDesc(static_cast<IDirect3DSurface9 *>(object), &internal_desc)))
-					break;
+					D3DSURFACE_DESC internal_desc;
+					if (FAILED(IDirect3DSurface9_GetDesc(static_cast<IDirect3DSurface9 *>(object), &internal_desc)))
+						break;
 
-				if (internal_desc.Format != MAKEFOURCC('N', 'U', 'L', 'L') && (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format))
-					break;
+					if (internal_desc.Format != MAKEFOURCC('N', 'U', 'L', 'L') && (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format))
+						break;
+				}
+
+				object->AddRef();
+				{
+					*out_view = { reinterpret_cast<uintptr_t>(object) | (is_srgb_format ? 1ull : 0) };
+					return true;
+				}
 			}
-
-			object->AddRef();
-			{
-				*out_view = { reinterpret_cast<uintptr_t>(object) | (is_srgb_format ? 1ull : 0) };
-				return true;
-			}
+			break;
 		}
-		break;
-	case D3DRTYPE_TEXTURE:
-		if (usage_type == api::resource_usage::depth_stencil || usage_type == api::resource_usage::render_target)
+		case D3DRTYPE_TEXTURE:
 		{
-			uint32_t level = 0;
-
-			if (desc.type != api::resource_view_type::unknown)
+			if (usage_type == api::resource_usage::depth_stencil || usage_type == api::resource_usage::render_target)
 			{
-				assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
-				assert(desc.texture.first_layer == 0 && (desc.texture.layer_count == 1 || desc.texture.layer_count == UINT32_MAX));
+				uint32_t level = 0;
 
-				if (desc.texture.level_count != 1 && !(desc.texture.level_count == UINT32_MAX && IDirect3DTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(object)) == 1))
-					break;
+				if (desc.type != api::resource_view_type::unknown)
+				{
+					assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
+					assert(desc.texture.first_layer == 0 && (desc.texture.layer_count == 1 || desc.texture.layer_count == UINT32_MAX));
 
-				level = desc.texture.first_level;
+					if (desc.texture.level_count != 1 && !(desc.texture.level_count == UINT32_MAX && IDirect3DTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(object)) == 1))
+						break;
 
-				D3DSURFACE_DESC internal_desc;
-				if (FAILED(IDirect3DTexture9_GetLevelDesc(static_cast<IDirect3DTexture9 *>(object), level, &internal_desc)))
-					break;
+					level = desc.texture.first_level;
 
-				if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
-					break;
+					D3DSURFACE_DESC internal_desc;
+					if (FAILED(IDirect3DTexture9_GetLevelDesc(static_cast<IDirect3DTexture9 *>(object), level, &internal_desc)))
+						break;
+
+					if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
+						break;
+				}
+
+				if (com_ptr<IDirect3DSurface9> surface;
+					SUCCEEDED(IDirect3DTexture9_GetSurfaceLevel(static_cast<IDirect3DTexture9 *>(object), level, &surface)))
+				{
+					*out_view = { reinterpret_cast<uintptr_t>(surface.release()) | (is_srgb_format ? 1ull : 0) };
+					return true;
+				}
 			}
-
-			if (com_ptr<IDirect3DSurface9> surface;
-				SUCCEEDED(IDirect3DTexture9_GetSurfaceLevel(static_cast<IDirect3DTexture9 *>(object), level, &surface)))
+			else if (usage_type == api::resource_usage::shader_resource)
 			{
-				*out_view = { reinterpret_cast<uintptr_t>(surface.release()) | (is_srgb_format ? 1ull : 0) };
-				return true;
+				if (desc.type != api::resource_view_type::unknown)
+				{
+					assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
+					assert(desc.texture.first_layer == 0 && (desc.texture.layer_count == 1 || desc.texture.layer_count == UINT32_MAX));
+
+					if (desc.texture.first_level != 0)
+						break;
+
+					D3DSURFACE_DESC internal_desc;
+					if (FAILED(IDirect3DTexture9_GetLevelDesc(static_cast<IDirect3DTexture9 *>(object), 0, &internal_desc)))
+						break;
+
+					if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
+						break;
+				}
+
+				object->AddRef();
+				{
+					*out_view = { reinterpret_cast<uintptr_t>(object) | (is_srgb_format ? 1ull : 0) };
+					return true;
+				}
 			}
+			break;
 		}
-		else if (usage_type == api::resource_usage::shader_resource)
+		case D3DRTYPE_VOLUMETEXTURE:
 		{
-			if (desc.type != api::resource_view_type::unknown)
+			if (usage_type == api::resource_usage::shader_resource)
 			{
-				assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
-				assert(desc.texture.first_layer == 0 && (desc.texture.layer_count == 1 || desc.texture.layer_count == UINT32_MAX));
+				if (desc.type != api::resource_view_type::unknown)
+				{
+					assert(desc.type == api::resource_view_type::texture_3d);
 
-				if (desc.texture.first_level != 0)
-					break;
+					if (desc.texture.first_level != 0 || desc.texture.first_layer != 0)
+						break;
 
-				D3DSURFACE_DESC internal_desc;
-				if (FAILED(IDirect3DTexture9_GetLevelDesc(static_cast<IDirect3DTexture9 *>(object), 0, &internal_desc)))
-					break;
+					D3DVOLUME_DESC internal_desc;
+					if (FAILED(IDirect3DVolumeTexture9_GetLevelDesc(static_cast<IDirect3DVolumeTexture9 *>(object), 0, &internal_desc)))
+						break;
 
-				if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
-					break;
+					if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
+						break;
+				}
+
+				object->AddRef();
+				{
+					*out_view = { reinterpret_cast<uintptr_t>(object) | (is_srgb_format ? 1ull : 0) };
+					return true;
+				}
 			}
-
-			object->AddRef();
-			{
-				*out_view = { reinterpret_cast<uintptr_t>(object) | (is_srgb_format ? 1ull : 0) };
-				return true;
-			}
+			break;
 		}
-		break;
-	case D3DRTYPE_VOLUMETEXTURE:
-		if (usage_type == api::resource_usage::shader_resource)
+		case D3DRTYPE_CUBETEXTURE:
 		{
-			if (desc.type != api::resource_view_type::unknown)
+			if (usage_type == api::resource_usage::depth_stencil || usage_type == api::resource_usage::render_target)
 			{
-				assert(desc.type == api::resource_view_type::texture_3d);
+				uint32_t level = 0;
+				D3DCUBEMAP_FACES face = D3DCUBEMAP_FACE_POSITIVE_X;
 
-				if (desc.texture.first_level != 0 || desc.texture.first_layer != 0)
-					break;
+				if (desc.type != api::resource_view_type::unknown)
+				{
+					assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
 
-				D3DVOLUME_DESC internal_desc;
-				if (FAILED(IDirect3DVolumeTexture9_GetLevelDesc(static_cast<IDirect3DVolumeTexture9 *>(object), 0, &internal_desc)))
-					break;
+					if (desc.texture.level_count != 1 && !(desc.texture.level_count == UINT32_MAX && IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(object)) == 1) || desc.texture.layer_count != 1)
+						break;
 
-				if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
-					break;
+					face = static_cast<D3DCUBEMAP_FACES>(desc.texture.first_layer);
+					level = desc.texture.first_level;
+
+					D3DSURFACE_DESC internal_desc;
+					if (FAILED(IDirect3DCubeTexture9_GetLevelDesc(static_cast<IDirect3DCubeTexture9 *>(object), level, &internal_desc)))
+						break;
+
+					if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
+						break;
+				}
+
+				if (com_ptr<IDirect3DSurface9> surface;
+					SUCCEEDED(IDirect3DCubeTexture9_GetCubeMapSurface(static_cast<IDirect3DCubeTexture9 *>(object), face, level, &surface)))
+				{
+					*out_view = { reinterpret_cast<uintptr_t>(surface.release()) | (is_srgb_format ? 1ull : 0) };
+					return true;
+				}
 			}
-
-			object->AddRef();
+			else if (usage_type == api::resource_usage::shader_resource)
 			{
-				*out_view = { reinterpret_cast<uintptr_t>(object) | (is_srgb_format ? 1ull : 0) };
-				return true;
+				if (desc.type != api::resource_view_type::unknown)
+				{
+					assert(desc.type == api::resource_view_type::texture_cube);
+
+					if (desc.texture.first_level != 0 || desc.texture.first_layer != 0)
+						break;
+
+					D3DSURFACE_DESC internal_desc;
+					if (FAILED(IDirect3DCubeTexture9_GetLevelDesc(static_cast<IDirect3DCubeTexture9 *>(object), 0, &internal_desc)))
+						break;
+
+					if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
+						break;
+				}
+
+				object->AddRef();
+				{
+					*out_view = { reinterpret_cast<uintptr_t>(object) | (is_srgb_format ? 1ull : 0) };
+					return true;
+				}
 			}
+			break;
 		}
-		break;
-	case D3DRTYPE_CUBETEXTURE:
-		if (usage_type == api::resource_usage::depth_stencil || usage_type == api::resource_usage::render_target)
-		{
-			uint32_t level = 0;
-			D3DCUBEMAP_FACES face = D3DCUBEMAP_FACE_POSITIVE_X;
-
-			if (desc.type != api::resource_view_type::unknown)
-			{
-				assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
-
-				if (desc.texture.level_count != 1 && !(desc.texture.level_count == UINT32_MAX && IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(object)) == 1) || desc.texture.layer_count != 1)
-					break;
-
-				face = static_cast<D3DCUBEMAP_FACES>(desc.texture.first_layer);
-				level = desc.texture.first_level;
-
-				D3DSURFACE_DESC internal_desc;
-				if (FAILED(IDirect3DCubeTexture9_GetLevelDesc(static_cast<IDirect3DCubeTexture9 *>(object), level, &internal_desc)))
-					break;
-
-				if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
-					break;
-			}
-
-			if (com_ptr<IDirect3DSurface9> surface;
-				SUCCEEDED(IDirect3DCubeTexture9_GetCubeMapSurface(static_cast<IDirect3DCubeTexture9 *>(object), face, level, &surface)))
-			{
-				*out_view = { reinterpret_cast<uintptr_t>(surface.release()) | (is_srgb_format ? 1ull : 0) };
-				return true;
-			}
-		}
-		else if (usage_type == api::resource_usage::shader_resource)
-		{
-			if (desc.type != api::resource_view_type::unknown)
-			{
-				assert(desc.type == api::resource_view_type::texture_cube);
-
-				if (desc.texture.first_level != 0 || desc.texture.first_layer != 0)
-					break;
-
-				D3DSURFACE_DESC internal_desc;
-				if (FAILED(IDirect3DCubeTexture9_GetLevelDesc(static_cast<IDirect3DCubeTexture9 *>(object), 0, &internal_desc)))
-					break;
-
-				if (!convert_format_internal(desc.format, view_format) || internal_desc.Format != view_format)
-					break;
-			}
-
-			object->AddRef();
-			{
-				*out_view = { reinterpret_cast<uintptr_t>(object) | (is_srgb_format ? 1ull : 0) };
-				return true;
-			}
-		}
-		break;
 	}
 
 	return false;
@@ -767,48 +772,54 @@ reshade::api::resource reshade::d3d9::device_impl::get_resource_from_view(api::r
 
 	switch (IDirect3DResource9_GetType(resource))
 	{
-	case D3DRTYPE_TEXTURE:
-		for (DWORD level = 0, levels = IDirect3DTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(resource)); level < levels; ++level)
+		case D3DRTYPE_TEXTURE:
 		{
-			com_ptr<IDirect3DSurface9> surface;
-			if (SUCCEEDED(IDirect3DTexture9_GetSurfaceLevel(static_cast<IDirect3DTexture9 *>(resource), level, &surface)) && surface == static_cast<IDirect3DSurface9 *>(object))
-			{
-				*out_subresource = level;
-				if (out_levels != nullptr)
-					*out_levels = levels;
-				break;
-			}
-		}
-		break;
-	case D3DRTYPE_VOLUMETEXTURE:
-		for (DWORD level = 0, levels = IDirect3DVolumeTexture9_GetLevelCount(static_cast<IDirect3DVolumeTexture9 *>(resource)); level < levels; ++level)
-		{
-			com_ptr<IDirect3DVolume9> volume;
-			if (SUCCEEDED(IDirect3DVolumeTexture9_GetVolumeLevel(static_cast<IDirect3DVolumeTexture9 *>(resource), level, &volume)) && volume == static_cast<IDirect3DVolume9 *>(object))
-			{
-				*out_subresource = level;
-				if (out_levels != nullptr)
-					*out_levels = levels;
-				break;
-			}
-		}
-		break;
-	case D3DRTYPE_CUBETEXTURE:
-		for (DWORD level = 0, levels = IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DCubeTexture9 *>(resource)); level < levels; ++level)
-		{
-			for (D3DCUBEMAP_FACES face = D3DCUBEMAP_FACE_POSITIVE_X; face <= D3DCUBEMAP_FACE_NEGATIVE_Z; face = static_cast<D3DCUBEMAP_FACES>(face + 1))
+			for (DWORD level = 0, levels = IDirect3DTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(resource)); level < levels; ++level)
 			{
 				com_ptr<IDirect3DSurface9> surface;
-				if (SUCCEEDED(IDirect3DCubeTexture9_GetCubeMapSurface(static_cast<IDirect3DCubeTexture9 *>(resource), face, level, &surface)) && surface == static_cast<IDirect3DSurface9 *>(object))
+				if (SUCCEEDED(IDirect3DTexture9_GetSurfaceLevel(static_cast<IDirect3DTexture9 *>(resource), level, &surface)) && surface == static_cast<IDirect3DSurface9 *>(object))
 				{
-					*out_subresource = level + face * levels;
+					*out_subresource = level;
 					if (out_levels != nullptr)
 						*out_levels = levels;
 					break;
 				}
 			}
+			break;
 		}
-		break;
+		case D3DRTYPE_VOLUMETEXTURE:
+		{
+			for (DWORD level = 0, levels = IDirect3DVolumeTexture9_GetLevelCount(static_cast<IDirect3DVolumeTexture9 *>(resource)); level < levels; ++level)
+			{
+				com_ptr<IDirect3DVolume9> volume;
+				if (SUCCEEDED(IDirect3DVolumeTexture9_GetVolumeLevel(static_cast<IDirect3DVolumeTexture9 *>(resource), level, &volume)) && volume == static_cast<IDirect3DVolume9 *>(object))
+				{
+					*out_subresource = level;
+					if (out_levels != nullptr)
+						*out_levels = levels;
+					break;
+				}
+			}
+			break;
+		}
+		case D3DRTYPE_CUBETEXTURE:
+		{
+			for (DWORD level = 0, levels = IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DCubeTexture9 *>(resource)); level < levels; ++level)
+			{
+				for (D3DCUBEMAP_FACES face = D3DCUBEMAP_FACE_POSITIVE_X; face <= D3DCUBEMAP_FACE_NEGATIVE_Z; face = static_cast<D3DCUBEMAP_FACES>(face + 1))
+				{
+					com_ptr<IDirect3DSurface9> surface;
+					if (SUCCEEDED(IDirect3DCubeTexture9_GetCubeMapSurface(static_cast<IDirect3DCubeTexture9 *>(resource), face, level, &surface)) && surface == static_cast<IDirect3DSurface9 *>(object))
+					{
+						*out_subresource = level + face * levels;
+						if (out_levels != nullptr)
+							*out_levels = levels;
+						break;
+					}
+				}
+			}
+			break;
+		}
 	}
 
 	return to_handle(resource);
@@ -839,7 +850,7 @@ reshade::api::resource_view_desc reshade::d3d9::device_impl::get_resource_view_d
 
 	switch (IDirect3DResource9_GetType(static_cast<IDirect3DResource9 *>(object)))
 	{
-	case D3DRTYPE_SURFACE:
+		case D3DRTYPE_SURFACE:
 		{
 			uint32_t subresource, levels;
 			get_resource_from_view(view, &subresource, &levels);
@@ -849,33 +860,31 @@ reshade::api::resource_view_desc reshade::d3d9::device_impl::get_resource_view_d
 
 			return api::resource_view_desc(api::format_to_default_typed(convert_format(internal_desc.Format), is_srgb_format), subresource % levels, 1, subresource / levels, 1);
 		}
-	case D3DRTYPE_TEXTURE:
+		case D3DRTYPE_TEXTURE:
 		{
 			D3DSURFACE_DESC internal_desc;
 			IDirect3DTexture9_GetLevelDesc(static_cast<IDirect3DTexture9 *>(object), 0, &internal_desc);
 
 			return api::resource_view_desc(api::format_to_default_typed(convert_format(internal_desc.Format), is_srgb_format), 0, UINT32_MAX, 0, UINT32_MAX);
 		}
-	case D3DRTYPE_VOLUMETEXTURE:
+		case D3DRTYPE_VOLUMETEXTURE:
 		{
 			D3DVOLUME_DESC internal_desc;
 			IDirect3DVolumeTexture9_GetLevelDesc(static_cast<IDirect3DVolumeTexture9 *>(object), 0, &internal_desc);
 
 			return api::resource_view_desc(api::format_to_default_typed(convert_format(internal_desc.Format), is_srgb_format), 0, UINT32_MAX, 0, UINT32_MAX);
 		}
-	case D3DRTYPE_CUBETEXTURE:
+		case D3DRTYPE_CUBETEXTURE:
 		{
 			D3DSURFACE_DESC internal_desc;
 			IDirect3DCubeTexture9_GetLevelDesc(static_cast<IDirect3DCubeTexture9 *>(object), 0, &internal_desc);
 
 			return api::resource_view_desc(api::format_to_default_typed(convert_format(internal_desc.Format), is_srgb_format), 0, UINT32_MAX, 0, UINT32_MAX);
 		}
-	default:
-		{
-			assert(false); // Not implemented
-			return api::resource_view_desc();
-		}
 	}
+
+	assert(false); // Not implemented
+	return api::resource_view_desc();
 }
 
 bool reshade::d3d9::device_impl::map_buffer_region(api::resource resource, uint64_t offset, uint64_t size, api::map_access access, void **out_data)
@@ -920,39 +929,33 @@ bool reshade::d3d9::device_impl::map_texture_region(api::resource resource, uint
 
 	switch (IDirect3DResource9_GetType(object))
 	{
-	case D3DRTYPE_SURFACE:
+		case D3DRTYPE_SURFACE:
 		{
 			assert(subresource == 0);
 
-			if (box != nullptr && (box->front != 0 || box->back != 1))
-				break;
-
 			RECT rect;
 			D3DLOCKED_RECT locked_rect;
-			if (SUCCEEDED(IDirect3DSurface9_LockRect(static_cast<IDirect3DSurface9 *>(object), &locked_rect, convert_subresource_box_to_rect(box, rect), convert_access_flags(access))))
+			if (SUCCEEDED(IDirect3DSurface9_LockRect(static_cast<IDirect3DSurface9 *>(object), &locked_rect, convert_box_to_rect(box, rect), convert_access_flags(access))))
 			{
 				out_data->data = locked_rect.pBits;
 				out_data->row_pitch = locked_rect.Pitch;
 				return true;
 			}
+			return false;
 		}
-		break;
-	case D3DRTYPE_TEXTURE:
+		case D3DRTYPE_TEXTURE:
 		{
-			if (box != nullptr && (box->front != 0 || box->back != 1))
-				break;
-
 			RECT rect;
 			D3DLOCKED_RECT locked_rect;
-			if (SUCCEEDED(IDirect3DTexture9_LockRect(static_cast<IDirect3DTexture9 *>(object), subresource, &locked_rect, convert_subresource_box_to_rect(box, rect), convert_access_flags(access))))
+			if (SUCCEEDED(IDirect3DTexture9_LockRect(static_cast<IDirect3DTexture9 *>(object), subresource, &locked_rect, convert_box_to_rect(box, rect), convert_access_flags(access))))
 			{
 				out_data->data = locked_rect.pBits;
 				out_data->row_pitch = locked_rect.Pitch;
 				return true;
 			}
+			return false;
 		}
-		break;
-	case D3DRTYPE_VOLUMETEXTURE:
+		case D3DRTYPE_VOLUMETEXTURE:
 		{
 			D3DLOCKED_BOX locked_box;
 			if (SUCCEEDED(IDirect3DVolumeTexture9_LockBox(static_cast<IDirect3DVolumeTexture9 *>(object), subresource, &locked_box, reinterpret_cast<const D3DBOX *>(box), convert_access_flags(access))))
@@ -962,30 +965,25 @@ bool reshade::d3d9::device_impl::map_texture_region(api::resource resource, uint
 				out_data->slice_pitch = locked_box.SlicePitch;
 				return true;
 			}
+			return false;
 		}
-		break;
-	case D3DRTYPE_CUBETEXTURE:
+		case D3DRTYPE_CUBETEXTURE:
 		{
-			if (box != nullptr && (box->front != 0 || box->back != 1))
-				break;
-
 			const UINT levels = IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DCubeTexture9 *>(object));
 
 			RECT rect;
 			D3DLOCKED_RECT locked_rect;
-			if (SUCCEEDED(IDirect3DCubeTexture9_LockRect(static_cast<IDirect3DCubeTexture9 *>(object), static_cast<D3DCUBEMAP_FACES>(subresource / levels), subresource % levels, &locked_rect, convert_subresource_box_to_rect(box, rect), convert_access_flags(access))))
+			if (SUCCEEDED(IDirect3DCubeTexture9_LockRect(static_cast<IDirect3DCubeTexture9 *>(object), static_cast<D3DCUBEMAP_FACES>(subresource / levels), subresource % levels, &locked_rect, convert_box_to_rect(box, rect), convert_access_flags(access))))
 			{
 				out_data->data = locked_rect.pBits;
 				out_data->row_pitch = locked_rect.Pitch;
 				return true;
 			}
+			return false;
 		}
-		break;
-	default:
-		assert(false); // Not implemented
-		break;
 	}
 
+	assert(false); // Not implemented
 	return false;
 }
 void reshade::d3d9::device_impl::unmap_texture_region(api::resource resource, uint32_t subresource)
@@ -996,164 +994,364 @@ void reshade::d3d9::device_impl::unmap_texture_region(api::resource resource, ui
 
 	switch (IDirect3DResource9_GetType(object))
 	{
-	case D3DRTYPE_SURFACE:
+		case D3DRTYPE_SURFACE:
 		{
 			assert(subresource == 0);
 
 			IDirect3DSurface9_UnlockRect(static_cast<IDirect3DSurface9 *>(object));
+			return;
 		}
-		break;
-	case D3DRTYPE_TEXTURE:
+		case D3DRTYPE_TEXTURE:
 		{
 			IDirect3DTexture9_UnlockRect(static_cast<IDirect3DTexture9 *>(object), subresource);
+			return;
 		}
-		break;
-	case D3DRTYPE_VOLUMETEXTURE:
+		case D3DRTYPE_VOLUMETEXTURE:
 		{
 			IDirect3DVolumeTexture9_UnlockBox(static_cast<IDirect3DVolumeTexture9 *>(object), subresource);
+			return;
 		}
-		break;
-	case D3DRTYPE_CUBETEXTURE:
+		case D3DRTYPE_CUBETEXTURE:
 		{
 			const UINT levels = IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DCubeTexture9 *>(object));
 
 			IDirect3DCubeTexture9_UnlockRect(static_cast<IDirect3DCubeTexture9 *>(object), static_cast<D3DCUBEMAP_FACES>(subresource / levels), subresource % levels);
-		}
-		break;
-	default:
-		assert(false); // Not implemented
-		break;
-	}
-}
-
-void reshade::d3d9::device_impl::update_buffer_region(const void *data, api::resource dst, uint64_t dst_offset, uint64_t size)
-{
-	if (data == nullptr)
-		return;
-
-	if (void *mapped_data;
-		map_buffer_region(dst, dst_offset, size, api::map_access::write_only, &mapped_data))
-	{
-		std::memcpy(mapped_data, data, static_cast<size_t>(size));
-
-		unmap_buffer_region(dst);
-	}
-}
-void reshade::d3d9::device_impl::update_texture_region(const api::subresource_data &data, api::resource dst, uint32_t dst_subresource, const api::subresource_box *dst_box)
-{
-	assert(dst != 0);
-
-	if (data.data == nullptr)
-		return;
-
-	const api::resource_desc desc = get_resource_desc(dst);
-
-	UINT width, height, depth;
-	if (dst_box != nullptr)
-	{
-		width  = dst_box->width();
-		height = dst_box->height();
-		depth  = dst_box->depth();
-	}
-	else
-	{
-		const UINT level = dst_subresource % desc.texture.levels;
-
-		width  = std::max(1u, desc.texture.width >> level);
-		height = std::max(1u, desc.texture.height >> level);
-		depth  = (desc.type == api::resource_type::texture_3d ? std::max(1u, static_cast<uint32_t>(desc.texture.depth_or_layers) >> level) : 1);
-	}
-
-	api::resource intermediate = dst;
-	uint32_t subresource = dst_subresource;
-	const api::subresource_box *src_box = dst_box;
-
-	if ((desc.flags & api::resource_flags::dynamic) == 0)
-	{
-		subresource = 0;
-		src_box = nullptr;
-
-		if (!create_resource(api::resource_desc(desc.type, width, height, static_cast<uint16_t>(depth), 1, desc.texture.format, 1, api::memory_heap::upload, api::resource_usage::copy_source), nullptr, api::resource_usage::cpu_access, &intermediate))
-		{
-			log::message(log::level::error, "Failed to create upload buffer (width = %u, height = %u, depth = %u, format = %d)!", width, height, depth, static_cast<int>(desc.texture.format));
 			return;
 		}
 	}
 
-	if (api::subresource_data mapped_data;
-		map_texture_region(intermediate, subresource, src_box, api::map_access::write_only, &mapped_data))
+	assert(false); // Not implemented
+}
+
+void reshade::d3d9::device_impl::update_buffer_region(const void *data, api::resource resource, uint64_t offset, uint64_t size)
+{
+	assert(resource != 0);
+	assert(offset <= std::numeric_limits<UINT>::max() && size <= std::numeric_limits<UINT>::max());
+
+	if (data == nullptr)
+		return;
+
+	const auto object = reinterpret_cast<IDirect3DResource9 *>(resource.handle);
+
+	switch (IDirect3DResource9_GetType(object))
 	{
-		// If format is one of these two, assume they were overwritten by 'convert_format_internal', so handle them accordingly
-		// TODO: Maybe store the original format as user data in the resource to avoid this hack?
-		const D3DFORMAT internal_format = convert_format(desc.texture.format);
-		if (internal_format == D3DFMT_A8R8G8B8 || internal_format == D3DFMT_X8R8G8B8)
+		case D3DRTYPE_VERTEXBUFFER:
 		{
-			for (uint32_t z = 0; z < depth; ++z)
+			void *mapped_ptr;
+			if (SUCCEEDED(IDirect3DVertexBuffer9_Lock(static_cast<IDirect3DVertexBuffer9 *>(object), static_cast<UINT>(offset), static_cast<UINT>(size), &mapped_ptr, 0)))
 			{
-				const auto dst_slice = static_cast<uint8_t *>(mapped_data.data) + z * mapped_data.slice_pitch;
-				const auto src_slice = static_cast<const uint8_t *>(data.data) + z * data.slice_pitch;
+				std::memcpy(mapped_ptr, data, static_cast<size_t>(size));
+				IDirect3DVertexBuffer9_Unlock(static_cast<IDirect3DVertexBuffer9 *>(object));
+			}
+			return;
+		}
+		case D3DRTYPE_INDEXBUFFER:
+		{
+			void *mapped_ptr;
+			if (SUCCEEDED(IDirect3DIndexBuffer9_Lock(static_cast<IDirect3DIndexBuffer9 *>(object), static_cast<UINT>(offset), static_cast<UINT>(size), &mapped_ptr, 0)))
+			{
+				std::memcpy(mapped_ptr, data, static_cast<size_t>(size));
+				IDirect3DIndexBuffer9_Unlock(static_cast<IDirect3DIndexBuffer9 *>(object));
+			}
+			return;
+		}
+	}
 
-				for (uint32_t y = 0; y < height; ++y)
+	assert(false); // Not implemented
+}
+void reshade::d3d9::device_impl::update_texture_region(const api::subresource_data &data, api::resource resource, uint32_t subresource, const api::subresource_box *box)
+{
+	assert(resource != 0);
+
+	if (data.data == nullptr)
+		return;
+
+	const auto object = reinterpret_cast<IDirect3DResource9 *>(resource.handle);
+
+	switch (IDirect3DResource9_GetType(object))
+	{
+		case D3DRTYPE_TEXTURE:
+		{
+			// Get D3D texture format
+			// Note: This fails for any mipmap level but the first one for textures with D3DUSAGE_AUTOGENMIPMAP, since in that case the D3D runtime does not have surfaces for those
+			D3DSURFACE_DESC desc;
+			if (FAILED(IDirect3DTexture9_GetLevelDesc(static_cast<IDirect3DTexture9 *>(object), subresource, &desc)))
+				return;
+
+			const UINT width = (box != nullptr) ? box->width() : desc.Width;
+			const UINT height = (box != nullptr) ? box->height() : desc.Height;
+			const bool use_systemmem_texture = IDirect3DTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(object)) == 1 && box == nullptr;
+
+			com_ptr<IDirect3DTexture9> intermediate;
+			if (FAILED(_orig->CreateTexture(width, height, 1, use_systemmem_texture ? 0 : D3DUSAGE_DYNAMIC, desc.Format, use_systemmem_texture ? D3DPOOL_SYSTEMMEM : D3DPOOL_DEFAULT, &intermediate, nullptr)))
+			{
+				log::message(log::level::error, "Failed to create upload buffer (width = %u, height = %u, levels = 1, usage = %s, format = %d)!", width, height, use_systemmem_texture ? "0" : "D3DUSAGE_DYNAMIC", desc.Format);
+				return;
+			}
+
+			D3DLOCKED_RECT locked_rect;
+			if (FAILED(IDirect3DTexture9_LockRect(intermediate.get(), 0, &locked_rect, static_cast<const RECT *>(nullptr), 0)))
+				return;
+			auto mapped_data = static_cast<uint8_t *>(locked_rect.pBits);
+			auto upload_data = static_cast<const uint8_t *>(data.data);
+
+			// If format is one of these two, assume they were overwritten by 'convert_format_internal', so handle them accordingly
+			// TODO: Maybe store the original format as user data in the resource to avoid this hack?
+			if (desc.Format == D3DFMT_A8R8G8B8 || desc.Format == D3DFMT_X8R8G8B8)
+			{
+				for (uint32_t y = 0; y < height; ++y, mapped_data += locked_rect.Pitch, upload_data += data.row_pitch)
 				{
-					const auto dst_row = dst_slice + y * mapped_data.row_pitch;
-					const auto src_row = src_slice + y * data.row_pitch;
-
 					switch (data.row_pitch / width)
 					{
 					case 1: // This is likely actually a r8 texture
 						for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 1)
-							dst_row[x + 0] = 0, // Set green and blue channel to zero
-							dst_row[x + 1] = 0,
-							dst_row[x + 2] = src_row[i],
-							dst_row[x + 3] = 0xFF;
+							mapped_data[x + 0] = 0, // Set green and blue channel to zero
+							mapped_data[x + 1] = 0,
+							mapped_data[x + 2] = upload_data[i],
+							mapped_data[x + 3] = 0xFF;
 						break;
 					case 2: // This is likely actually a r8g8 texture
 						for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 2)
-							dst_row[x + 0] = 0, // Set blue channel to zero
-							dst_row[x + 1] = src_row[i + 1],
-							dst_row[x + 2] = src_row[i + 0],
-							dst_row[x + 3] = 0xFF;
+							mapped_data[x + 0] = 0, // Set blue channel to zero
+							mapped_data[x + 1] = upload_data[i + 1],
+							mapped_data[x + 2] = upload_data[i + 0],
+							mapped_data[x + 3] = 0xFF;
 						break;
 					case 4: // This is likely actually a r8g8b8a8 texture
 					default:
 						for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 4)
-							dst_row[x + 0] = src_row[i + 2], // Flip RGBA input to BGRA
-							dst_row[x + 1] = src_row[i + 1],
-							dst_row[x + 2] = src_row[i + 0],
-							dst_row[x + 3] = src_row[i + 3];
+							mapped_data[x + 0] = upload_data[i + 2], // Flip RGBA input to BGRA
+							mapped_data[x + 1] = upload_data[i + 1],
+							mapped_data[x + 2] = upload_data[i + 0],
+							mapped_data[x + 3] = upload_data[i + 3];
 						break;
 					}
 				}
 			}
-		}
-		else
-		{
-			const size_t row_size = std::min(mapped_data.row_pitch, data.row_pitch);
-
-			for (size_t z = 0; z < depth; ++z)
+			else
 			{
-				const auto dst_slice = static_cast<uint8_t *>(mapped_data.data) + z * mapped_data.slice_pitch;
-				const auto src_slice = static_cast<const uint8_t *>(data.data) + z * data.slice_pitch;
-
-				for (size_t y = 0; y < height; ++y)
+				for (uint32_t y = 0; y < height; ++y, mapped_data += locked_rect.Pitch, upload_data += data.row_pitch)
 				{
-					std::memcpy(
-						dst_slice + y * mapped_data.row_pitch,
-						src_slice + y * data.row_pitch, row_size);
+					std::memcpy(mapped_data, upload_data, std::min(data.row_pitch, static_cast<uint32_t>(locked_rect.Pitch)));
 				}
 			}
+
+			IDirect3DTexture9_UnlockRect(intermediate.get(), 0);
+
+			if (use_systemmem_texture)
+			{
+				assert(subresource == 0);
+
+				_orig->UpdateTexture(intermediate.get(), static_cast<IDirect3DTexture9 *>(object));
+			}
+			else
+			{
+				RECT dst_rect;
+
+				com_ptr<IDirect3DSurface9> src_surface;
+				IDirect3DTexture9_GetSurfaceLevel(intermediate.get(), 0, &src_surface);
+				com_ptr<IDirect3DSurface9> dst_surface;
+				IDirect3DTexture9_GetSurfaceLevel(static_cast<IDirect3DTexture9 *>(object), subresource, &dst_surface);
+
+				_orig->StretchRect(src_surface.get(), nullptr, dst_surface.get(), convert_box_to_rect(box, dst_rect), D3DTEXF_NONE);
+			}
+			return;
 		}
-
-		unmap_texture_region(intermediate, subresource);
-
-		if (intermediate != dst)
+		case D3DRTYPE_VOLUMETEXTURE:
 		{
-			copy_texture_region(intermediate, subresource, src_box, dst, dst_subresource, dst_box, api::filter_mode::min_mag_mip_point);
+			// Get D3D texture format
+			D3DVOLUME_DESC desc;
+			if (FAILED(IDirect3DVolumeTexture9_GetLevelDesc(static_cast<IDirect3DVolumeTexture9 *>(object), subresource, &desc)))
+				return;
+
+			const UINT width = (box != nullptr) ? box->width() : desc.Width;
+			const UINT height = (box != nullptr) ? box->height() : desc.Height;
+			const UINT depth = (box != nullptr) ? box->depth() : desc.Depth;
+			const bool use_systemmem_texture = IDirect3DVolumeTexture9_GetLevelCount(static_cast<IDirect3DVolumeTexture9 *>(object)) == 1 && box == nullptr;
+
+			com_ptr<IDirect3DVolumeTexture9> intermediate;
+			if (use_systemmem_texture)
+			{
+				if (FAILED(_orig->CreateVolumeTexture(width, height, depth, 1, 0, desc.Format, D3DPOOL_SYSTEMMEM, &intermediate, nullptr)))
+				{
+					log::message(log::level::error, "Failed to create upload buffer (width = %u, height = %u, depth = %u, levels = 1, usage = %s, format = %d)!", width, height, depth, use_systemmem_texture ? "0" : "D3DUSAGE_DYNAMIC", desc.Format);
+					return;
+				}
+			}
+			else
+			{
+				intermediate = static_cast<IDirect3DVolumeTexture9 *>(object);
+			}
+
+			D3DLOCKED_BOX locked_box;
+			if (FAILED(IDirect3DVolumeTexture9_LockBox(intermediate.get(), 0, &locked_box, static_cast<const D3DBOX *>(nullptr), 0)))
+				return;
+			auto mapped_data = static_cast<uint8_t *>(locked_box.pBits);
+			auto upload_data = static_cast<const uint8_t *>(data.data);
+
+			// If format is one of these two, assume they were overwritten by 'convert_format_internal', so handle them accordingly
+			// TODO: Maybe store the original format as user data in the resource to avoid this hack?
+			if (desc.Format == D3DFMT_A8R8G8B8 || desc.Format == D3DFMT_X8R8G8B8)
+			{
+				for (uint32_t z = 0; z < depth; ++z, mapped_data += locked_box.SlicePitch, upload_data += data.slice_pitch)
+				{
+					auto mapped_data_slice = mapped_data;
+					auto upload_data_slice = upload_data;
+
+					for (uint32_t y = 0; y < height; ++y, mapped_data_slice += locked_box.RowPitch, upload_data_slice += data.row_pitch)
+					{
+						switch (data.row_pitch / width)
+						{
+						case 1: // This is likely actually a r8 texture
+							for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 1)
+								mapped_data_slice[x + 0] = 0, // Set green and blue channel to zero
+								mapped_data_slice[x + 1] = 0,
+								mapped_data_slice[x + 2] = upload_data_slice[i],
+								mapped_data_slice[x + 3] = 0xFF;
+							break;
+						case 2: // This is likely actually a r8g8 texture
+							for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 2)
+								mapped_data_slice[x + 0] = 0, // Set blue channel to zero
+								mapped_data_slice[x + 1] = upload_data_slice[i + 1],
+								mapped_data_slice[x + 2] = upload_data_slice[i + 0],
+								mapped_data_slice[x + 3] = 0xFF;
+							break;
+						case 4: // This is likely actually a r8g8b8a8 texture
+						default:
+							for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 4)
+								mapped_data_slice[x + 0] = upload_data_slice[i + 2], // Flip RGBA input to BGRA
+								mapped_data_slice[x + 1] = upload_data_slice[i + 1],
+								mapped_data_slice[x + 2] = upload_data_slice[i + 0],
+								mapped_data_slice[x + 3] = upload_data_slice[i + 3];
+							break;
+						}
+					}
+				}
+			}
+			else
+			{
+				for (uint32_t z = 0; z < depth; ++z, mapped_data += locked_box.SlicePitch, upload_data += data.slice_pitch)
+				{
+					auto mapped_data_slice = mapped_data;
+					auto upload_data_slice = upload_data;
+
+					for (uint32_t y = 0; y < height; ++y, mapped_data_slice += locked_box.RowPitch, upload_data_slice += data.row_pitch)
+					{
+						std::memcpy(mapped_data_slice, upload_data_slice, std::min(data.row_pitch, static_cast<uint32_t>(locked_box.RowPitch)));
+					}
+				}
+			}
+
+			IDirect3DVolumeTexture9_UnlockBox(intermediate.get(), 0);
+
+			if (use_systemmem_texture)
+			{
+				assert(subresource == 0);
+
+				_orig->UpdateTexture(intermediate.get(), static_cast<IDirect3DVolumeTexture9 *>(object));
+			}
+			return;
+		}
+		case D3DRTYPE_CUBETEXTURE:
+		{
+			// Get D3D texture format
+			// Note: This fails for any mipmap level but the first one for textures with D3DUSAGE_AUTOGENMIPMAP, since in that case the D3D runtime does not have surfaces for those
+			D3DSURFACE_DESC desc;
+			if (FAILED(IDirect3DCubeTexture9_GetLevelDesc(static_cast<IDirect3DCubeTexture9 *>(object), subresource, &desc)))
+				return;
+
+			const UINT width = (box != nullptr) ? box->width() : desc.Width;
+			const UINT height = (box != nullptr) ? box->height() : desc.Height;
+			if (width != height)
+				return;
+
+			const bool use_systemmem_texture = IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DCubeTexture9 *>(object)) == 1 && box == nullptr;
+
+			com_ptr<IDirect3DCubeTexture9> intermediate;
+			if (FAILED(_orig->CreateCubeTexture(width, 1, use_systemmem_texture ? 0 : D3DUSAGE_DYNAMIC, desc.Format, use_systemmem_texture ? D3DPOOL_SYSTEMMEM : D3DPOOL_DEFAULT, &intermediate, nullptr)))
+			{
+				log::message(log::level::error, "Failed to create upload buffer (width = %u, height = %u, levels = 1, usage = %s, format = %d)!", width, height, use_systemmem_texture ? "0" : "D3DUSAGE_DYNAMIC", desc.Format);
+				return;
+			}
+
+			D3DLOCKED_RECT locked_rect;
+
+			for (D3DCUBEMAP_FACES face = D3DCUBEMAP_FACE_POSITIVE_X; face <= D3DCUBEMAP_FACE_NEGATIVE_Z; face = static_cast<D3DCUBEMAP_FACES>(face + 1))
+			{
+				if (FAILED(IDirect3DCubeTexture9_LockRect(intermediate.get(), face, 0, &locked_rect, static_cast<const RECT *>(nullptr), 0)))
+					return;
+				auto mapped_data = static_cast<uint8_t *>(locked_rect.pBits);
+				auto upload_data = static_cast<const uint8_t *>(data.data);
+
+				// If format is one of these two, assume they were overwritten by 'convert_format_internal', so handle them accordingly
+				// TODO: Maybe store the original format as user data in the resource to avoid this hack?
+				if (desc.Format == D3DFMT_A8R8G8B8 || desc.Format == D3DFMT_X8R8G8B8)
+				{
+					for (uint32_t y = 0; y < height; ++y, mapped_data += locked_rect.Pitch, upload_data += data.row_pitch)
+					{
+						switch (data.row_pitch / width)
+						{
+						case 1: // This is likely actually a r8 texture
+							for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 1)
+								mapped_data[x + 0] = 0, // Set green and blue channel to zero
+								mapped_data[x + 1] = 0,
+								mapped_data[x + 2] = upload_data[i],
+								mapped_data[x + 3] = 0xFF;
+							break;
+						case 2: // This is likely actually a r8g8 texture
+							for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 2)
+								mapped_data[x + 0] = 0, // Set blue channel to zero
+								mapped_data[x + 1] = upload_data[i + 1],
+								mapped_data[x + 2] = upload_data[i + 0],
+								mapped_data[x + 3] = 0xFF;
+							break;
+						case 4: // This is likely actually a r8g8b8a8 texture
+						default:
+							for (uint32_t x = 0, i = 0; x < width * 4; x += 4, i += 4)
+								mapped_data[x + 0] = upload_data[i + 2], // Flip RGBA input to BGRA
+								mapped_data[x + 1] = upload_data[i + 1],
+								mapped_data[x + 2] = upload_data[i + 0],
+								mapped_data[x + 3] = upload_data[i + 3];
+							break;
+						}
+					}
+				}
+				else
+				{
+					for (uint32_t y = 0; y < height; ++y, mapped_data += locked_rect.Pitch, upload_data += data.row_pitch)
+					{
+						std::memcpy(mapped_data, upload_data, std::min(data.row_pitch, static_cast<uint32_t>(locked_rect.Pitch)));
+					}
+				}
+
+				IDirect3DCubeTexture9_UnlockRect(intermediate.get(), face, 0);
+			}
+
+			if (use_systemmem_texture)
+			{
+				assert(subresource == 0);
+
+				_orig->UpdateTexture(intermediate.get(), static_cast<IDirect3DCubeTexture9 *>(object));
+			}
+			else
+			{
+				RECT dst_rect;
+
+				for (D3DCUBEMAP_FACES face = D3DCUBEMAP_FACE_POSITIVE_X; face <= D3DCUBEMAP_FACE_NEGATIVE_Z; face = static_cast<D3DCUBEMAP_FACES>(face + 1))
+				{
+					com_ptr<IDirect3DSurface9> src_surface;
+					IDirect3DCubeTexture9_GetCubeMapSurface(intermediate.get(), face, 0, &src_surface);
+					com_ptr<IDirect3DSurface9> dst_surface;
+					IDirect3DCubeTexture9_GetCubeMapSurface(static_cast<IDirect3DCubeTexture9 *>(object), face, subresource, &dst_surface);
+					
+					_orig->StretchRect(src_surface.get(), nullptr, dst_surface.get(), convert_box_to_rect(box, dst_rect), D3DTEXF_NONE);
+				}
+			}
+			return;
 		}
 	}
 
-	if (intermediate != dst)
-		destroy_resource(intermediate);
+	assert(false); // Not implemented
 }
 
 bool reshade::d3d9::device_impl::create_input_layout(uint32_t count, const api::input_element *desc, api::pipeline *out_pipeline)
@@ -1379,12 +1577,11 @@ bool reshade::d3d9::device_impl::create_pipeline(api::pipeline_layout, uint32_t 
 				goto exit_failure;
 			}
 
-			if (void *mapped_data;
-				SUCCEEDED(IDirect3DVertexBuffer9_Lock(_default_input_stream.get(), 0, max_vertices * sizeof(float), &mapped_data, 0)))
+			if (float *data;
+				SUCCEEDED(IDirect3DVertexBuffer9_Lock(_default_input_stream.get(), 0, max_vertices * sizeof(float), reinterpret_cast<void **>(&data), 0)))
 			{
 				for (UINT i = 0; i < max_vertices; ++i)
-					static_cast<float *>(mapped_data)[i] = static_cast<float>(i);
-
+					data[i] = static_cast<float>(i);
 				IDirect3DVertexBuffer9_Unlock(_default_input_stream.get());
 			}
 		}
@@ -1641,7 +1838,7 @@ void reshade::d3d9::device_impl::copy_descriptor_tables(uint32_t count, const ap
 	{
 		const api::descriptor_table_copy &copy = copies[i];
 
-		const auto src_table_impl = reinterpret_cast<const descriptor_table_impl *>(copy.source_table.handle);
+		const auto src_table_impl = reinterpret_cast<descriptor_table_impl *>(copy.source_table.handle);
 		const auto dst_table_impl = reinterpret_cast<descriptor_table_impl *>(copy.dest_table.handle);
 		assert(src_table_impl != nullptr && dst_table_impl != nullptr && src_table_impl->type == dst_table_impl->type);
 

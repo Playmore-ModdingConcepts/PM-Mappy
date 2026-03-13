@@ -5,16 +5,20 @@
 
 #include "vulkan_hooks.hpp"
 #include "dll_log.hpp"
-#ifdef RESHADE_TEST_APPLICATION
 #include "hook_manager.hpp"
-#endif
 #include "addon_manager.hpp"
 #include "lockfree_linear_map.hpp"
 #include <cstring> // std::strncmp, std::strncpy
 #include <algorithm> // std::find_if
 
-lockfree_linear_map<VkSurfaceKHR, HWND, 16> g_vulkan_surfaces;
-lockfree_linear_map<void *, vulkan_instance, 16> g_vulkan_instances;
+lockfree_linear_map<void *, instance_dispatch_table, 16> g_vulkan_instances;
+lockfree_linear_map<VkSurfaceKHR, HWND, 16> g_vulkan_surface_windows;
+
+#define GET_DISPATCH_PTR(name, object) \
+	PFN_vk##name trampoline = g_vulkan_instances.at(dispatch_key_from_handle(object)).name; \
+	assert(trampoline != nullptr)
+#define INIT_DISPATCH_PTR(name) \
+	dispatch_table.name = reinterpret_cast<PFN_vk##name>(get_instance_proc(instance, "vk" #name))
 
 VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkInstance *pInstance)
 {
@@ -23,27 +27,12 @@ VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo, co
 	assert(pCreateInfo != nullptr && pInstance != nullptr);
 
 	// Look for layer link info if installed as a layer (provided by the Vulkan loader)
-	struct VkLayerInstanceLink
-	{
-		VkLayerInstanceLink *pNext;
-		PFN_vkGetInstanceProcAddr pfnNextGetInstanceProcAddr;
-		PFN_vkGetInstanceProcAddr pfnNextGetPhysicalDeviceProcAddr;
-	};
-	struct VkLayerInstanceCreateInfo
-	{
-		VkStructureType sType; // VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO
-		const void *pNext;
-		VkLayerFunction function;
-		union {
-			VkLayerInstanceLink *pLayerInfo;
-		} u;
-	};
-
-	const auto link_info = find_layer_info<VkLayerInstanceCreateInfo>(pCreateInfo->pNext, VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO, VK_LAYER_LINK_INFO);
+	VkLayerInstanceCreateInfo *const link_info = find_layer_info<VkLayerInstanceCreateInfo>(pCreateInfo->pNext, VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO, VK_LAYER_LINK_INFO);
 
 	// Get trampoline function pointers
 	PFN_vkCreateInstance trampoline = nullptr;
-	PFN_vkGetInstanceProcAddr get_instance_proc_addr = nullptr;
+	PFN_vkGetInstanceProcAddr get_instance_proc = nullptr;
+	PFN_GetPhysicalDeviceProcAddr get_physical_device_proc = nullptr;
 
 	if (link_info != nullptr)
 	{
@@ -51,8 +40,9 @@ VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo, co
 		assert(link_info->u.pLayerInfo->pfnNextGetInstanceProcAddr != nullptr);
 
 		// Look up functions in layer info
-		get_instance_proc_addr = link_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
-		trampoline = reinterpret_cast<PFN_vkCreateInstance>(get_instance_proc_addr(VK_NULL_HANDLE, "vkCreateInstance"));
+		get_instance_proc = link_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
+		get_physical_device_proc = link_info->u.pLayerInfo->pfnNextGetPhysicalDeviceProcAddr;
+		trampoline = reinterpret_cast<PFN_vkCreateInstance>(get_instance_proc(nullptr, "vkCreateInstance"));
 
 		// Advance the link info for the next element of the chain
 		link_info->u.pLayerInfo = link_info->u.pLayerInfo->pNext;
@@ -61,11 +51,11 @@ VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo, co
 	else
 	{
 		trampoline = reshade::hooks::call(vkCreateInstance);
-		get_instance_proc_addr = reshade::hooks::call(vkGetInstanceProcAddr);
+		get_instance_proc = reshade::hooks::call(vkGetInstanceProcAddr);
 	}
 #endif
 
-	if (trampoline == nullptr || get_instance_proc_addr == nullptr) // Unable to resolve next 'vkCreateInstance' function in the call chain
+	if (trampoline == nullptr || get_instance_proc == nullptr) // Unable to resolve next 'vkCreateInstance' function in the call chain
 		return VK_ERROR_INITIALIZATION_FAILED;
 
 	reshade::log::message(reshade::log::level::info, "> Dumping enabled instance extensions:");
@@ -90,7 +80,6 @@ VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo, co
 
 	reshade::log::message(reshade::log::level::info, "Requesting new Vulkan instance for API version %u.%u.", VK_API_VERSION_MAJOR(app_info.apiVersion), VK_API_VERSION_MINOR(app_info.apiVersion));
 
-#if VK_EXT_private_data
 	// ReShade requires at least Vulkan 1.1 (for SPIR-V 1.3 compatibility)
 	if (app_info.apiVersion < VK_API_VERSION_1_1)
 	{
@@ -98,26 +87,19 @@ VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo, co
 
 		app_info.apiVersion = VK_API_VERSION_1_1;
 	}
-#else
-	// ReShade requires at least Vulkan 1.3 (for private data support in addition to SPIR-V 1.3 compatibility)
-	if (app_info.apiVersion < VK_API_VERSION_1_3)
-	{
-		reshade::log::message(reshade::log::level::info, "> Replacing requested version with 1.3.");
-
-		app_info.apiVersion = VK_API_VERSION_1_3;
-	}
-#endif
 
 	// 'vkEnumerateInstanceExtensionProperties' is not included in the next 'vkGetInstanceProcAddr' from the call chain, so use global one instead
-	const auto enum_instance_extensions = reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(GetProcAddress(GetModuleHandleW(L"vulkan-1.dll"), "vkEnumerateInstanceExtensionProperties"));
-	if (enum_instance_extensions == nullptr)
-		return VK_ERROR_INITIALIZATION_FAILED;
+	const auto vulkan_module = GetModuleHandleW(L"vulkan-1.dll");
+	assert(vulkan_module != nullptr);
+	const auto enum_instance_extensions = reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(GetProcAddress(vulkan_module, "vkEnumerateInstanceExtensionProperties"));
+	assert(enum_instance_extensions != nullptr);
 
 	std::vector<const char *> enabled_extensions;
 	enabled_extensions.reserve(pCreateInfo->enabledExtensionCount);
 	for (uint32_t i = 0; i < pCreateInfo->enabledExtensionCount; ++i)
 		enabled_extensions.push_back(pCreateInfo->ppEnabledExtensionNames[i]);
 
+	if (enum_instance_extensions != nullptr)
 	{
 		uint32_t num_extensions = 0;
 		enum_instance_extensions(nullptr, &num_extensions, nullptr);
@@ -147,14 +129,7 @@ VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo, co
 		};
 
 		// Enable extensions that ReShade requires
-#if VK_EXT_debug_utils
 		add_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, false);
-#endif
-
-		add_extension(VK_KHR_SURFACE_EXTENSION_NAME, false);
-#if VK_EXT_swapchain_color_space
-		add_extension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME, false);
-#endif
 	}
 
 	VkInstanceCreateInfo create_info = *pCreateInfo;
@@ -173,39 +148,54 @@ VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo, co
 		return result;
 	}
 
+	VkInstance instance = *pInstance;
 	// Initialize the instance dispatch table
-	vulkan_instance instance = { *pInstance, app_info.apiVersion };
-	instance.dispatch_table.GetInstanceProcAddr = get_instance_proc_addr;
-	instance.dispatch_table.EnumerateInstanceExtensionProperties = enum_instance_extensions;
+	VkLayerInstanceDispatchTable dispatch_table = {};
+	dispatch_table.GetInstanceProcAddr = get_instance_proc;
+	dispatch_table.GetPhysicalDeviceProcAddr = get_physical_device_proc;
 
-	gladLoadVulkanContextUserPtr(&instance.dispatch_table, VK_NULL_HANDLE,
-		[](void *user, const char *name) -> GLADapiproc {
-			const vulkan_instance &instance = *static_cast<const vulkan_instance *>(user);
-			const char *name_without_prefix = name + 2; // Skip "vk" prefix
+	// Core 1_0
+	INIT_DISPATCH_PTR(DestroyInstance);
+	INIT_DISPATCH_PTR(EnumeratePhysicalDevices);
+	INIT_DISPATCH_PTR(GetPhysicalDeviceFeatures);
+	INIT_DISPATCH_PTR(GetPhysicalDeviceFormatProperties);
+	INIT_DISPATCH_PTR(GetPhysicalDeviceProperties);
+	INIT_DISPATCH_PTR(GetPhysicalDeviceMemoryProperties);
+	INIT_DISPATCH_PTR(GetPhysicalDeviceQueueFamilyProperties);
+	INIT_DISPATCH_PTR(EnumerateDeviceExtensionProperties);
 
-			// Do not load existing function pointers anew
-			if (0 == std::strcmp(name_without_prefix, "GetInstanceProcAddr"))
-				return reinterpret_cast<GLADapiproc>(instance.dispatch_table.GetInstanceProcAddr);
-			if (0 == std::strcmp(name_without_prefix, "EnumerateInstanceExtensionProperties"))
-				return reinterpret_cast<GLADapiproc>(instance.dispatch_table.EnumerateInstanceExtensionProperties);
+	// Core 1_1
+	INIT_DISPATCH_PTR(GetPhysicalDeviceProperties2);
+	INIT_DISPATCH_PTR(GetPhysicalDeviceMemoryProperties2);
+	INIT_DISPATCH_PTR(GetPhysicalDeviceExternalBufferProperties);
+	INIT_DISPATCH_PTR(GetPhysicalDeviceExternalSemaphoreProperties);
 
-			const PFN_vkVoidFunction instance_proc_address = instance.dispatch_table.GetInstanceProcAddr(instance.handle, name);
-			return reinterpret_cast<GLADapiproc>(instance_proc_address);
-		}, &instance);
+	// Core 1_3
+	INIT_DISPATCH_PTR(GetPhysicalDeviceToolProperties);
 
-	g_vulkan_instances.emplace(dispatch_key_from_handle(instance.handle), instance);
+	// VK_KHR_surface
+	INIT_DISPATCH_PTR(DestroySurfaceKHR);
+
+	// VK_KHR_win32_surface
+	INIT_DISPATCH_PTR(CreateWin32SurfaceKHR);
+
+	// VK_EXT_tooling_info
+	INIT_DISPATCH_PTR(GetPhysicalDeviceToolPropertiesEXT);
+
+	g_vulkan_instances.emplace(dispatch_key_from_handle(instance), instance_dispatch_table { dispatch_table, instance, app_info.apiVersion });
 
 #if RESHADE_VERBOSE_LOG
-	reshade::log::message(reshade::log::level::debug, "Returning Vulkan instance %p.", instance.handle);
+	reshade::log::message(reshade::log::level::debug, "Returning Vulkan instance %p.", instance);
 #endif
 	return VK_SUCCESS;
 }
+
 void     VKAPI_CALL vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks *pAllocator)
 {
 	reshade::log::message(reshade::log::level::info, "Redirecting vkDestroyInstance(instance = %p, pAllocator = %p) ...", instance, pAllocator);
 
 	// Get function pointer before removing it next
-	RESHADE_VULKAN_GET_INSTANCE_DISPATCH_PTR(DestroyInstance, instance);
+	GET_DISPATCH_PTR(DestroyInstance, instance);
 
 	// Remove instance dispatch table since this instance is being destroyed
 	g_vulkan_instances.erase(dispatch_key_from_handle(instance));
@@ -217,12 +207,11 @@ void     VKAPI_CALL vkDestroyInstance(VkInstance instance, const VkAllocationCal
 	trampoline(instance, pAllocator);
 }
 
-#if VK_KHR_win32_surface
 VkResult VKAPI_CALL vkCreateWin32SurfaceKHR(VkInstance instance, const VkWin32SurfaceCreateInfoKHR *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSurfaceKHR *pSurface)
 {
 	reshade::log::message(reshade::log::level::info, "Redirecting vkCreateWin32SurfaceKHR(instance = %p, pCreateInfo = %p, pAllocator = %p, pSurface = %p) ...", instance, pCreateInfo, pAllocator, pSurface);
 
-	RESHADE_VULKAN_GET_INSTANCE_DISPATCH_PTR(CreateWin32SurfaceKHR, instance);
+	GET_DISPATCH_PTR(CreateWin32SurfaceKHR, instance);
 	const VkResult result = trampoline(instance, pCreateInfo, pAllocator, pSurface);
 	if (result != VK_SUCCESS)
 	{
@@ -230,24 +219,22 @@ VkResult VKAPI_CALL vkCreateWin32SurfaceKHR(VkInstance instance, const VkWin32Su
 		return result;
 	}
 
-	g_vulkan_surfaces.emplace(*pSurface, pCreateInfo->hwnd);
+	g_vulkan_surface_windows.emplace(*pSurface, pCreateInfo->hwnd);
 
 	return VK_SUCCESS;
 }
-#endif
-#if VK_KHR_surface
+
 void     VKAPI_CALL vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, const VkAllocationCallbacks *pAllocator)
 {
 	reshade::log::message(reshade::log::level::info, "Redirecting vkDestroySurfaceKHR(instance = %p, surface = %p, pAllocator = %) ...", instance, surface, pAllocator);
 
-	g_vulkan_surfaces.erase(surface);
+	g_vulkan_surface_windows.erase(surface);
 
-	RESHADE_VULKAN_GET_INSTANCE_DISPATCH_PTR(DestroySurfaceKHR, instance);
+	GET_DISPATCH_PTR(DestroySurfaceKHR, instance);
 	trampoline(instance, surface, pAllocator);
 }
-#endif
 
-extern "C" const char *ReShadeVersion;
+#include "version.h"
 
 static VkResult get_physical_device_tool_properties(VkPhysicalDevice physicalDevice, uint32_t *pToolCount, VkPhysicalDeviceToolProperties *pToolProperties, VkResult(VKAPI_CALL *trampoline)(VkPhysicalDevice, uint32_t *, VkPhysicalDeviceToolProperties *))
 {
@@ -274,10 +261,10 @@ static VkResult get_physical_device_tool_properties(VkPhysicalDevice physicalDev
 	if (VK_SUCCESS != result)
 		return result;
 
-	VkPhysicalDeviceToolProperties &tool_props = pToolProperties[(*pToolCount)++];
+	VkPhysicalDeviceToolPropertiesEXT &tool_props = pToolProperties[(*pToolCount)++];
 	std::strncpy(tool_props.name, "ReShade", VK_MAX_EXTENSION_NAME_SIZE);
-	std::strncpy(tool_props.version, ReShadeVersion, VK_MAX_EXTENSION_NAME_SIZE);
-	tool_props.purposes = VK_TOOL_PURPOSE_ADDITIONAL_FEATURES_BIT | VK_TOOL_PURPOSE_MODIFYING_FEATURES_BIT;
+	std::strncpy(tool_props.version, VERSION_STRING_PRODUCT, VK_MAX_EXTENSION_NAME_SIZE);
+	tool_props.purposes = VK_TOOL_PURPOSE_ADDITIONAL_FEATURES_BIT_EXT | VK_TOOL_PURPOSE_MODIFYING_FEATURES_BIT_EXT;
 	std::strncpy(tool_props.description, "crosire's ReShade post-processing injector", VK_MAX_DESCRIPTION_SIZE);
 	std::strncpy(tool_props.layer, "VK_LAYER_reshade", VK_MAX_EXTENSION_NAME_SIZE);
 
@@ -286,13 +273,13 @@ static VkResult get_physical_device_tool_properties(VkPhysicalDevice physicalDev
 
 VkResult VKAPI_CALL vkGetPhysicalDeviceToolProperties(VkPhysicalDevice physicalDevice, uint32_t *pToolCount, VkPhysicalDeviceToolProperties *pToolProperties)
 {
-	RESHADE_VULKAN_GET_INSTANCE_DISPATCH_PTR(GetPhysicalDeviceToolProperties, physicalDevice);
+	GET_DISPATCH_PTR(GetPhysicalDeviceToolProperties, physicalDevice);
+
 	return get_physical_device_tool_properties(physicalDevice, pToolCount, pToolProperties, trampoline);
 }
-#if VK_EXT_tooling_info
 VkResult VKAPI_CALL vkGetPhysicalDeviceToolPropertiesEXT(VkPhysicalDevice physicalDevice, uint32_t *pToolCount, VkPhysicalDeviceToolPropertiesEXT *pToolProperties)
 {
-	RESHADE_VULKAN_GET_INSTANCE_DISPATCH_PTR(GetPhysicalDeviceToolPropertiesEXT, physicalDevice);
+	GET_DISPATCH_PTR(GetPhysicalDeviceToolPropertiesEXT, physicalDevice);
+
 	return get_physical_device_tool_properties(physicalDevice, pToolCount, pToolProperties, trampoline);
 }
-#endif

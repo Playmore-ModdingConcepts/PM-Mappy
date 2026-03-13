@@ -90,7 +90,7 @@ IDR_MIPMAP_CS           RCDATA                  "shaders\\mipmap_cs_5_0.cso"
 
 IDR_MIPMAP_CS_GLSL      RCDATA                  "shaders\\mipmap_cs_430.glsl"
 
-IDR_LICENSE_GLAD        RCDATA                  "..\\deps\\glad\\LICENSE"
+IDR_LICENSE_GL3W        RCDATA                  "..\\deps\\gl3w\\UNLICENSE"
 
 IDR_LICENSE_IMGUI       RCDATA                  "..\\deps\\imgui\\LICENSE.txt"
 
@@ -110,7 +110,7 @@ IDR_LICENSE_UTFCPP      RCDATA                  "..\\deps\\utfcpp\\LICENSE"
 
 IDR_LICENSE_VMA         RCDATA                  "..\\deps\\vma\\LICENSE.txt"
 
-IDR_LICENSE_S_JXL       RCDATA                  "..\\deps\\jxl_simple_lossless\\LICENSE"
+IDR_LICENSE_VULKAN      RCDATA                  "..\\deps\\vulkan\\LICENSE.md"
 #endif
 
 #endif    // Neutral (Default) resources
@@ -132,13 +132,8 @@ IDR_LICENSE_S_JXL       RCDATA                  "..\\deps\\jxl_simple_lossless\\
 #include "lang_fr-FR.rc2"
 #include "lang_ja-JP.rc2"
 #include "lang_ko-KR.rc2"
-#include "lang_pt-BR.rc2"
 #include "lang_ru-RU.rc2"
-#include "lang_sl-SI.rc2"
-#include "lang_th-TH.rc2"
-#include "lang_tr-TR.rc2"
 #include "lang_zh-CN.rc2"
-#include "lang_zh-HK.rc2"
 #endif
 
 /////////////////////////////////////////////////////////////////////////////

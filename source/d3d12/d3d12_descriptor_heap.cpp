@@ -8,7 +8,6 @@
 #include "d3d12_device.hpp"
 #include "d3d12_descriptor_heap.hpp"
 #include "dll_log.hpp"
-#include "com_utils.hpp"
 
 D3D12DescriptorHeap::D3D12DescriptorHeap(ID3D12Device *device, ID3D12DescriptorHeap *original) :
 	_orig(original),
@@ -39,14 +38,6 @@ HRESULT STDMETHODCALLTYPE D3D12DescriptorHeap::QueryInterface(REFIID riid, void 
 	{
 		AddRef();
 		*ppvObj = this;
-		return S_OK;
-	}
-
-	// Interface ID to query the original object from a proxy object
-	if (riid == IID_UnwrappedObject)
-	{
-		_orig->AddRef();
-		*ppvObj = _orig;
 		return S_OK;
 	}
 

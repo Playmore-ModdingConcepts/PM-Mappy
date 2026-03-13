@@ -27,15 +27,6 @@ bool reshade::runtime::init_gui_vr()
 	if (s_vr_overlay_handle != vr::k_ulOverlayHandleInvalid)
 		return true;
 
-	// OpenComposite aborts because it does not recognize the "IVROverlay_028" interface, so detect it via an export not present in the real OpenVR library
-	if (const HMODULE openvr_module = GetModuleHandleW(L"openvr_api.dll");
-		openvr_module != nullptr &&
-		GetProcAddress(openvr_module, "HmdSystemFactory") != nullptr)
-	{
-		log::message(log::level::error, "Failed to create VR dashboard overlay because SteamVR is not loaded!");
-		return true;
-	}
-
 	if (vr::VROverlay() == nullptr)
 	{
 		log::message(log::level::error, "Failed to create VR dashboard overlay because SteamVR is not loaded!");
@@ -67,7 +58,7 @@ bool reshade::runtime::init_gui_vr()
 
 	vr::VROverlay()->SetOverlayWidthInMeters(s_vr_overlay_handle, 1.5f);
 
-	if (!_device->create_resource(api::resource_desc(VR_OVERLAY_WIDTH, VR_OVERLAY_HEIGHT, 1, 1, api::format::r8g8b8a8_unorm, 1, api::memory_heap::default_, api::resource_usage::render_target | api::resource_usage::copy_source), nullptr, api::resource_usage::copy_source, &_vr_overlay_tex))
+	if (!_device->create_resource(api::resource_desc(VR_OVERLAY_WIDTH, VR_OVERLAY_HEIGHT, 1, 1, api::format::r8g8b8a8_unorm, 1, api::memory_heap::gpu_only, api::resource_usage::render_target | api::resource_usage::copy_source), nullptr, api::resource_usage::copy_source, &_vr_overlay_tex))
 	{
 		log::message(log::level::error, "Failed to create VR dashboard overlay texture!");
 		return false;
@@ -105,6 +96,8 @@ void reshade::runtime::draw_gui_vr()
 		return;
 
 	build_font_atlas();
+	if (_font_atlas_srv == 0)
+		return; // Cannot render GUI without font atlas
 
 	ImGuiContext *const backup_context = ImGui::GetCurrentContext();
 	ImGui::SetCurrentContext(_imgui_context);
@@ -113,6 +106,7 @@ void reshade::runtime::draw_gui_vr()
 	imgui_io.DeltaTime = _last_frame_duration.count() * 1e-9f;
 	imgui_io.DisplaySize.x = static_cast<float>(VR_OVERLAY_WIDTH);
 	imgui_io.DisplaySize.y = static_cast<float>(VR_OVERLAY_HEIGHT);
+	imgui_io.Fonts->TexID = _font_atlas_srv.handle;
 
 	imgui_io.AddKeyEvent(ImGuiKey_Backspace, false);
 	imgui_io.AddKeyEvent(ImGuiKey_Tab, false);
@@ -200,7 +194,6 @@ void reshade::runtime::draw_gui_vr()
 #endif
 		{ _("Settings###settings"), &runtime::draw_gui_settings },
 		{ _("Statistics###statistics"), &runtime::draw_gui_statistics },
-		{ _("Log###log"), &runtime::draw_gui_log },
 		{ _("About###about"), &runtime::draw_gui_about }
 	};
 
@@ -219,16 +212,6 @@ void reshade::runtime::draw_gui_vr()
 
 	ImGui::BeginChild("##overlay", ImVec2(0, ImGui::GetFrameHeight()), false, ImGuiWindowFlags_NoScrollbar);
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(_imgui_context->Style.FramePadding.x, 0));
-
-	for (const std::pair<std::string, void(runtime:: *)()> &widget : overlay_callbacks)
-	{
-		if (bool state = (overlay_index == selected_overlay_index);
-			imgui::toggle_button(widget.first.c_str(), state, 0.0f, ImGuiButtonFlags_AlignTextBaseLine))
-			selected_overlay_index = overlay_index;
-		ImGui::SameLine();
-
-		++overlay_index;
-	}
 
 #if RESHADE_ADDON == 1
 	if (addon_enabled)
@@ -306,7 +289,7 @@ void reshade::runtime::draw_gui_vr()
 
 	ImGui::SetCurrentContext(backup_context);
 
-	vr::Texture_t texture = {};
+	vr::Texture_t texture;
 	texture.eColorSpace = vr::ColorSpace_Auto;
 	union
 	{

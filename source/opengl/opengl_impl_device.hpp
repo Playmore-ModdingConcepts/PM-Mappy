@@ -5,21 +5,19 @@
 
 #pragma once
 
-#include <glad/wgl.h>
+#include <GL/gl3w.h>
 #include "reshade_api_object_impl.hpp"
 #include <atomic>
 #include <unordered_map>
 
 namespace reshade::opengl
 {
-	class device_context_impl;
-
 	class device_impl : public api::api_object_impl<HGLRC, api::device>
 	{
 		friend class device_context_impl;
 
 	public:
-		device_impl(HDC initial_hdc, HGLRC shared_hglrc, const GladGLContext &dispatch_table, bool compatibility_context = false);
+		device_impl(HDC initial_hdc, HGLRC shared_hglrc, bool compatibility_context = false);
 		~device_impl();
 
 		api::device_api get_api() const final { return api::device_api::opengl; }
@@ -34,7 +32,7 @@ namespace reshade::opengl
 		bool create_sampler(const api::sampler_desc &desc, api::sampler *out_sampler) final;
 		void destroy_sampler(api::sampler sampler) final;
 
-		bool create_resource(const api::resource_desc &desc, const api::subresource_data *initial_data, api::resource_usage initial_state, api::resource *out_resource, void **shared_handle = nullptr) final;
+		bool create_resource(const api::resource_desc &desc, const api::subresource_data *initial_data, api::resource_usage initial_state, api::resource *out_resource, HANDLE *shared_handle = nullptr) final;
 		void destroy_resource(api::resource resource) final;
 
 		api::resource_desc get_resource_desc(api::resource resource) const override;
@@ -43,8 +41,6 @@ namespace reshade::opengl
 		void destroy_resource_view(api::resource_view view) final;
 
 		api::format get_resource_format(GLenum target, GLenum object) const;
-
-		void register_resource_view(GLenum target, GLuint object, api::resource resource);
 
 		api::resource get_resource_from_view(api::resource_view view) const final;
 		api::resource_view_desc get_resource_view_desc(api::resource_view view) const final;
@@ -58,10 +54,9 @@ namespace reshade::opengl
 		bool map_texture_region(api::resource resource, uint32_t subresource, const api::subresource_box *box, api::map_access access, api::subresource_data *out_data) final;
 		void unmap_texture_region(api::resource resource, uint32_t subresource) final;
 
-		void update_buffer_region(const void *data, api::resource dest, uint64_t dest_offset, uint64_t size) final;
-		void update_texture_region(const api::subresource_data &data, api::resource dest, uint32_t dest_subresource, const api::subresource_box *dest_box) final;
+		void update_buffer_region(const void *data, api::resource resource, uint64_t offset, uint64_t size) final;
+		void update_texture_region(const api::subresource_data &data, api::resource resource, uint32_t subresource, const api::subresource_box *box) final;
 
-		bool create_shader(GLenum type, const reshade::api::shader_desc &desc, GLuint &out_shader);
 		bool create_pipeline(api::pipeline_layout layout, uint32_t subobjecte_count, const api::pipeline_subobject *subobjects, api::pipeline *out_pipeline) final;
 		void destroy_pipeline(api::pipeline pipeline) final;
 
@@ -84,7 +79,7 @@ namespace reshade::opengl
 		void set_resource_name(api::resource resource, const char *name) final;
 		void set_resource_view_name(api::resource_view view, const char *name) final;
 
-		bool create_fence(uint64_t initial_value, api::fence_flags flags, api::fence *out_fence, void **shared_handle = nullptr) final;
+		bool create_fence(uint64_t initial_value, api::fence_flags flags, api::fence *out_fence, HANDLE *shared_handle = nullptr) final;
 		void destroy_fence(api::fence fence) final;
 
 		uint64_t get_completed_fence_value(api::fence fence) const final;
@@ -96,13 +91,12 @@ namespace reshade::opengl
 
 		bool get_pipeline_shader_group_handles(api::pipeline pipeline, uint32_t first, uint32_t count, void *out_handles) final;
 
-		const GladGLContext _dispatch_table;
-
 	protected:
 		// Cached context information for quick access
 		int  _pixel_format;
 		api::format _default_depth_format;
 		api::resource_desc _default_fbo_desc = {};
+		bool _supports_dsa; // Direct State Access (core since OpenGL 4.5)
 		bool _compatibility_context;
 
 	private:
@@ -121,7 +115,5 @@ namespace reshade::opengl
 
 		std::atomic<uint64_t> _fbo_lookup_version = 0;
 		std::atomic<uint64_t> _vao_lookup_version = 0;
-
-		std::unordered_map<GLuint, api::resource> _texture_view_lookup;
 	};
 }

@@ -679,6 +679,10 @@ void reshadefx::preprocessor::parse_pragma()
 		return;
 
 	std::string pragma = std::move(_token.literal_as_string);
+	std::string pragma_args;
+
+	// Ignore whitespace preceding the argument list
+	accept(tokenid::space);
 
 	while (!peek(tokenid::end_of_line) && !peek(tokenid::end_of_file))
 	{
@@ -689,9 +693,9 @@ void reshadefx::preprocessor::parse_pragma()
 
 		// Collapse all whitespace down to a single space
 		if (_token == tokenid::space)
-			pragma += ' ';
+			pragma_args += ' ';
 		else
-			pragma += _current_token_raw_data;
+			pragma_args += _current_token_raw_data;
 	}
 
 	if (pragma == "once")
@@ -705,8 +709,13 @@ void reshadefx::preprocessor::parse_pragma()
 		return;
 	}
 
-	// Convert preprocessor pragma directive to pragma operator
-	_output += "_Pragma(\"" + pragma + "\")\n";
+	if (pragma == "warning" || pragma == "reshade")
+	{
+		_used_pragmas.emplace_back(std::move(pragma), std::move(pragma_args));
+		return;
+	}
+
+	warning(keyword_location, "unknown pragma ignored");
 }
 
 void reshadefx::preprocessor::parse_include()
@@ -1000,12 +1009,12 @@ bool reshadefx::preprocessor::evaluate_expression()
 		rpn[rpn_index++] = { op, true };
 	}
 
-#define IMPLEMENT_PP_UNARY_OPERATION(op) { \
+#define UNARY_OPERATION(op) { \
 	if (stack_index < 1) \
 		return error(_token.location, "invalid expression"), 0; \
 	stack[stack_index - 1] = op stack[stack_index - 1]; \
 	}
-#define IMPLEMENT_PP_BINARY_OPERATION(op) { \
+#define BINARY_OPERATION(op) { \
 	if (stack_index < 2) \
 		return error(_token.location, "invalid expression"), 0; \
 	stack[stack_index - 2] = stack[stack_index - 2] op stack[stack_index - 1]; \
@@ -1020,74 +1029,74 @@ bool reshadefx::preprocessor::evaluate_expression()
 			switch (token->value)
 			{
 			case op_or:
-				IMPLEMENT_PP_BINARY_OPERATION(||);
+				BINARY_OPERATION(||);
 				break;
 			case op_and:
-				IMPLEMENT_PP_BINARY_OPERATION(&&);
+				BINARY_OPERATION(&&);
 				break;
 			case op_bitor:
-				IMPLEMENT_PP_BINARY_OPERATION(|);
+				BINARY_OPERATION(|);
 				break;
 			case op_bitxor:
-				IMPLEMENT_PP_BINARY_OPERATION(^);
+				BINARY_OPERATION(^);
 				break;
 			case op_bitand:
-				IMPLEMENT_PP_BINARY_OPERATION(&);
+				BINARY_OPERATION(&);
 				break;
 			case op_not_equal:
-				IMPLEMENT_PP_BINARY_OPERATION(!=);
+				BINARY_OPERATION(!=);
 				break;
 			case op_equal:
-				IMPLEMENT_PP_BINARY_OPERATION(==);
+				BINARY_OPERATION(==);
 				break;
 			case op_less:
-				IMPLEMENT_PP_BINARY_OPERATION(<);
+				BINARY_OPERATION(<);
 				break;
 			case op_greater:
-				IMPLEMENT_PP_BINARY_OPERATION(>);
+				BINARY_OPERATION(>);
 				break;
 			case op_less_equal:
-				IMPLEMENT_PP_BINARY_OPERATION(<=);
+				BINARY_OPERATION(<=);
 				break;
 			case op_greater_equal:
-				IMPLEMENT_PP_BINARY_OPERATION(>=);
+				BINARY_OPERATION(>=);
 				break;
 			case op_leftshift:
-				IMPLEMENT_PP_BINARY_OPERATION(<<);
+				BINARY_OPERATION(<<);
 				break;
 			case op_rightshift:
-				IMPLEMENT_PP_BINARY_OPERATION(>>);
+				BINARY_OPERATION(>>);
 				break;
 			case op_add:
-				IMPLEMENT_PP_BINARY_OPERATION(+);
+				BINARY_OPERATION(+);
 				break;
 			case op_subtract:
-				IMPLEMENT_PP_BINARY_OPERATION(-);
+				BINARY_OPERATION(-);
 				break;
 			case op_modulo:
 				if (stack[stack_index - 1] == 0)
 					return error(_token.location, "right operand of '%' is zero"), 0;
-				IMPLEMENT_PP_BINARY_OPERATION(%);
+				BINARY_OPERATION(%);
 				break;
 			case op_divide:
 				if (stack[stack_index - 1] == 0)
 					return error(_token.location, "division by zero"), 0;
-				IMPLEMENT_PP_BINARY_OPERATION(/);
+				BINARY_OPERATION(/);
 				break;
 			case op_multiply:
-				IMPLEMENT_PP_BINARY_OPERATION(*);
+				BINARY_OPERATION(*);
 				break;
 			case op_plus:
-				IMPLEMENT_PP_UNARY_OPERATION(+);
+				UNARY_OPERATION(+);
 				break;
 			case op_negate:
-				IMPLEMENT_PP_UNARY_OPERATION(-);
+				UNARY_OPERATION(-);
 				break;
 			case op_not:
-				IMPLEMENT_PP_UNARY_OPERATION(!);
+				UNARY_OPERATION(!);
 				break;
 			case op_bitnot:
-				IMPLEMENT_PP_UNARY_OPERATION(~);
+				UNARY_OPERATION(~);
 				break;
 			}
 		}
@@ -1096,9 +1105,6 @@ bool reshadefx::preprocessor::evaluate_expression()
 			stack[stack_index++] = token->value;
 		}
 	}
-
-#undef IMPLEMENT_PP_UNARY_OPERATION
-#undef IMPLEMENT_PP_BINARY_OPERATION
 
 	if (stack_index != 1)
 		return error(_token.location, "invalid expression"), false;

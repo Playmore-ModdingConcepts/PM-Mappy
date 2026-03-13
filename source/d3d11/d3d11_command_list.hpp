@@ -7,11 +7,10 @@
 
 #include "d3d11_impl_device_context.hpp"
 
-class D3D11Device;
+struct D3D11Device;
 
-class DECLSPEC_UUID("592F5E83-A17B-4EEB-A2BF-7568DA2A3728") D3D11CommandList final : public ID3D11CommandList, public reshade::d3d11::command_list_impl
+struct DECLSPEC_UUID("592F5E83-A17B-4EEB-A2BF-7568DA2A3728") D3D11CommandList final : ID3D11CommandList, public reshade::d3d11::command_list_impl
 {
-public:
 	D3D11CommandList(D3D11Device *device, ID3D11CommandList *original);
 	~D3D11CommandList();
 
@@ -32,9 +31,6 @@ public:
 
 	bool check_and_upgrade_interface(REFIID riid);
 
-	using command_list_impl::_orig;
-	LONG _ref = 1;
-
-private:
+	ULONG _ref = 1;
 	D3D11Device *const _device;
 };

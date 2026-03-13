@@ -11,6 +11,9 @@ auto reshade::d3d9::convert_format(api::format format, BOOL lockable, BOOL shade
 {
 	switch (format)
 	{
+	default:
+		assert(false);
+		break;
 	case api::format::unknown:
 		return shader_usage ? D3DFMT_UNKNOWN : static_cast<D3DFORMAT>(MAKEFOURCC('N', 'U', 'L', 'L'));
 
@@ -201,10 +204,6 @@ auto reshade::d3d9::convert_format(api::format format, BOOL lockable, BOOL shade
 
 	case api::format::intz:
 		return static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z'));
-
-	default:
-		assert(false);
-		break;
 	}
 
 	return D3DFMT_UNKNOWN;
@@ -355,38 +354,36 @@ void reshade::d3d9::convert_memory_heap_to_d3d_pool(api::memory_heap heap, D3DPO
 
 	switch (heap)
 	{
-	case api::memory_heap::default_:
+	case api::memory_heap::unknown:
+		d3d_pool = D3DPOOL_MANAGED;
+		break;
+	case api::memory_heap::gpu_only:
 		d3d_pool = D3DPOOL_DEFAULT;
 		break;
-	case api::memory_heap::upload:
-	case api::memory_heap::readback:
+	case api::memory_heap::cpu_to_gpu:
+	case api::memory_heap::gpu_to_cpu:
 		d3d_pool = D3DPOOL_SYSTEMMEM;
 		break;
-	case api::memory_heap::scratch:
+	case api::memory_heap::cpu_only:
 		d3d_pool = D3DPOOL_SCRATCH;
-		break;
-	default:
-	case api::memory_heap::custom:
-		d3d_pool = D3DPOOL_MANAGED;
 		break;
 	}
 }
 void reshade::d3d9::convert_d3d_pool_to_memory_heap(D3DPOOL d3d_pool, api::memory_heap &heap)
 {
-	switch (static_cast<DWORD>(d3d_pool))
+	switch (d3d_pool)
 	{
 	case D3DPOOL_DEFAULT:
-		heap = api::memory_heap::default_;
+		heap = api::memory_heap::gpu_only;
 		break;
 	case D3DPOOL_MANAGED:
-	case D3DPOOL_MANAGED_EX:
-		heap = api::memory_heap::custom;
+		heap = api::memory_heap::unknown;
 		break;
 	case D3DPOOL_SYSTEMMEM:
-		heap = api::memory_heap::upload;
+		heap = api::memory_heap::cpu_to_gpu;
 		break;
 	case D3DPOOL_SCRATCH:
-		heap = api::memory_heap::scratch;
+		heap = api::memory_heap::cpu_only;
 		break;
 	}
 }
@@ -485,12 +482,13 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DVOL
 	internal_desc.Height = desc.texture.height;
 	internal_desc.Depth = desc.texture.depth_or_layers;
 
-	if (const D3DFORMAT format = convert_format(desc.texture.format))
+	if (const D3DFORMAT format = convert_format(desc.texture.format);
+		format != D3DFMT_UNKNOWN)
 		internal_desc.Format = format;
 
 	assert(desc.texture.samples == 1);
 
-	if (internal_desc.Pool != D3DPOOL_MANAGED && internal_desc.Pool != D3DPOOL_MANAGED_EX)
+	if (internal_desc.Pool != D3DPOOL_MANAGED)
 	{
 		convert_memory_heap_to_d3d_pool(desc.heap, internal_desc.Pool);
 		// Volume textures cannot have render target or depth-stencil usage, so do not call 'convert_resource_usage_to_d3d_usage'
@@ -501,7 +499,7 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DVOL
 			internal_desc.Usage |= D3DUSAGE_DYNAMIC;
 
 			// Keep dynamic textures in the default pool
-			if (desc.heap == api::memory_heap::upload || desc.heap == api::memory_heap::gpu_upload)
+			if (desc.heap == api::memory_heap::cpu_to_gpu)
 				internal_desc.Pool = D3DPOOL_DEFAULT;
 		}
 	}
@@ -520,7 +518,8 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DSUR
 	internal_desc.Width = desc.texture.width;
 	internal_desc.Height = desc.texture.height;
 
-	if (const D3DFORMAT format = convert_format(desc.texture.format, (desc.flags & api::resource_flags::dynamic) != 0, (desc.usage & api::resource_usage::shader_resource) != 0))
+	if (const D3DFORMAT format = convert_format(desc.texture.format, (desc.flags & api::resource_flags::dynamic) != 0, (desc.usage & api::resource_usage::shader_resource) != 0);
+		format != D3DFMT_UNKNOWN)
 		internal_desc.Format = format;
 
 	if (desc.texture.samples > 1)
@@ -542,11 +541,11 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DSUR
 		internal_desc.MultiSampleQuality = 0;
 	}
 
-	if (internal_desc.Pool != D3DPOOL_MANAGED && internal_desc.Pool != D3DPOOL_MANAGED_EX)
+	if (internal_desc.Pool != D3DPOOL_MANAGED)
 	{
 		convert_memory_heap_to_d3d_pool(desc.heap, internal_desc.Pool);
 		// System memory textures cannot have render target or depth-stencil usage
-		if (desc.heap == api::memory_heap::default_)
+		if (desc.heap == api::memory_heap::gpu_only)
 			convert_resource_usage_to_d3d_usage(desc.usage, internal_desc.Usage);
 
 		if (desc.type == api::resource_type::surface && lockable != nullptr)
@@ -558,7 +557,7 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DSUR
 			internal_desc.Usage |= D3DUSAGE_DYNAMIC;
 
 			// Keep dynamic textures in the default pool
-			if (desc.heap == api::memory_heap::upload || desc.heap == api::memory_heap::gpu_upload)
+			if (desc.heap == api::memory_heap::cpu_to_gpu)
 				internal_desc.Pool = D3DPOOL_DEFAULT;
 		}
 	}
@@ -605,9 +604,9 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DIND
 
 	assert((desc.usage & (api::resource_usage::vertex_buffer | api::resource_usage::index_buffer)) == api::resource_usage::index_buffer);
 
-	if (internal_desc.Pool != D3DPOOL_MANAGED && internal_desc.Pool != D3DPOOL_MANAGED_EX)
+	if (internal_desc.Pool != D3DPOOL_MANAGED)
 	{
-		if (desc.heap == api::memory_heap::readback)
+		if (desc.heap == api::memory_heap::gpu_to_cpu)
 		{
 			internal_desc.Pool = D3DPOOL_DEFAULT;
 			assert((internal_desc.Usage & D3DUSAGE_WRITEONLY) == 0);
@@ -615,18 +614,18 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DIND
 		else
 		{
 			convert_memory_heap_to_d3d_pool(desc.heap, internal_desc.Pool);
-			if (desc.heap == api::memory_heap::default_)
+			if (desc.heap == api::memory_heap::gpu_only)
 				internal_desc.Usage |= D3DUSAGE_WRITEONLY;
-			else if (desc.heap == api::memory_heap::upload)
+			else if (desc.heap == api::memory_heap::cpu_to_gpu)
 				internal_desc.Usage |= D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC;
 		}
 
-		if ((desc.flags & api::resource_flags::dynamic) != 0 && desc.heap != api::memory_heap::custom)
+		if ((desc.flags & api::resource_flags::dynamic) != 0 && desc.heap != api::memory_heap::unknown)
 		{
 			internal_desc.Usage |= D3DUSAGE_DYNAMIC;
 
 			// Keep dynamic buffers in the default pool
-			if (desc.heap == api::memory_heap::upload || desc.heap == api::memory_heap::gpu_upload)
+			if (desc.heap == api::memory_heap::cpu_to_gpu)
 				internal_desc.Pool = D3DPOOL_DEFAULT;
 		}
 	}
@@ -640,9 +639,9 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DVER
 
 	assert((desc.usage & (api::resource_usage::vertex_buffer | api::resource_usage::index_buffer)) == api::resource_usage::vertex_buffer);
 
-	if (internal_desc.Pool != D3DPOOL_MANAGED && internal_desc.Pool != D3DPOOL_MANAGED_EX)
+	if (internal_desc.Pool != D3DPOOL_MANAGED)
 	{
-		if (desc.heap == api::memory_heap::readback)
+		if (desc.heap == api::memory_heap::gpu_to_cpu)
 		{
 			internal_desc.Pool = D3DPOOL_DEFAULT;
 			assert((internal_desc.Usage & D3DUSAGE_WRITEONLY) == 0);
@@ -650,18 +649,18 @@ void reshade::d3d9::convert_resource_desc(const api::resource_desc &desc, D3DVER
 		else
 		{
 			convert_memory_heap_to_d3d_pool(desc.heap, internal_desc.Pool);
-			if (desc.heap == api::memory_heap::default_)
+			if (desc.heap == api::memory_heap::gpu_only)
 				internal_desc.Usage |= D3DUSAGE_WRITEONLY;
-			else if (desc.heap == api::memory_heap::upload)
+			else if (desc.heap == api::memory_heap::cpu_to_gpu)
 				internal_desc.Usage |= D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC;
 		}
 
-		if ((desc.flags & api::resource_flags::dynamic) != 0 && desc.heap != api::memory_heap::custom)
+		if ((desc.flags & api::resource_flags::dynamic) != 0 && desc.heap != api::memory_heap::unknown)
 		{
 			internal_desc.Usage |= D3DUSAGE_DYNAMIC;
 
 			// Keep dynamic buffers in the default pool
-			if (desc.heap == api::memory_heap::upload || desc.heap == api::memory_heap::gpu_upload)
+			if (desc.heap == api::memory_heap::cpu_to_gpu)
 				internal_desc.Pool = D3DPOOL_DEFAULT;
 		}
 	}
@@ -715,22 +714,19 @@ reshade::api::resource_desc reshade::d3d9::convert_resource_desc(const D3DSURFAC
 
 	convert_d3d_pool_to_memory_heap(internal_desc.Pool, desc.heap);
 	if (levels == 1 && internal_desc.Type == D3DRTYPE_TEXTURE && (internal_desc.Usage & D3DUSAGE_DYNAMIC) != 0)
-		desc.heap = api::memory_heap::upload;
+		desc.heap = api::memory_heap::cpu_to_gpu;
 
 	convert_d3d_usage_to_resource_usage(internal_desc.Usage, desc.usage);
-	if ((internal_desc.Type == D3DRTYPE_TEXTURE || internal_desc.Type == D3DRTYPE_CUBETEXTURE) && (internal_desc.Pool == D3DPOOL_DEFAULT || internal_desc.Pool == D3DPOOL_MANAGED || internal_desc.Pool == D3DPOOL_MANAGED_EX || (internal_desc.Pool == D3DPOOL_SYSTEMMEM && (caps.DevCaps & D3DDEVCAPS_TEXTURESYSTEMMEMORY) != 0)))
+	if ((internal_desc.Type == D3DRTYPE_TEXTURE || internal_desc.Type == D3DRTYPE_CUBETEXTURE) && (internal_desc.Pool == D3DPOOL_DEFAULT || internal_desc.Pool == D3DPOOL_MANAGED || (internal_desc.Pool == D3DPOOL_SYSTEMMEM && (caps.DevCaps & D3DDEVCAPS_TEXTURESYSTEMMEMORY) != 0)))
 	{
 		switch (static_cast<DWORD>(internal_desc.Format))
 		{
 		default:
-			desc.usage |= api::resource_usage::shader_resource;
-			break;
 		case MAKEFOURCC('R', 'A', 'W', 'Z'):
 		case MAKEFOURCC('D', 'F', '1', '6'):
 		case MAKEFOURCC('D', 'F', '2', '4'):
 		case MAKEFOURCC('I', 'N', 'T', 'Z'):
-			// Copy is possible from texture using rasterization pipeline
-			desc.usage |= api::resource_usage::shader_resource | api::resource_usage::copy_source;
+			desc.usage |= api::resource_usage::shader_resource;
 			break;
 		case D3DFMT_D16_LOCKABLE:
 		case D3DFMT_D32:
@@ -826,7 +822,7 @@ reshade::api::resource_desc reshade::d3d9::convert_resource_desc(const D3DINDEXB
 	desc.buffer.size = internal_desc.Size;
 	desc.buffer.stride = (internal_desc.Format == D3DFMT_INDEX32) ? 4 : 2;
 	if (internal_desc.Pool == D3DPOOL_DEFAULT && (internal_desc.Usage & D3DUSAGE_WRITEONLY) == 0)
-		desc.heap = api::memory_heap::readback;
+		desc.heap = api::memory_heap::gpu_to_cpu;
 	else
 		convert_d3d_pool_to_memory_heap(internal_desc.Pool, desc.heap);
 	desc.usage = api::resource_usage::index_buffer;
@@ -836,7 +832,7 @@ reshade::api::resource_desc reshade::d3d9::convert_resource_desc(const D3DINDEXB
 
 	if ((internal_desc.Usage & D3DUSAGE_DYNAMIC) != 0)
 	{
-		desc.heap = api::memory_heap::upload;
+		desc.heap = api::memory_heap::cpu_to_gpu;
 		desc.flags |= api::resource_flags::dynamic;
 	}
 
@@ -851,7 +847,7 @@ reshade::api::resource_desc reshade::d3d9::convert_resource_desc(const D3DVERTEX
 	desc.buffer.size = internal_desc.Size;
 	desc.buffer.stride = 0;
 	if (internal_desc.Pool == D3DPOOL_DEFAULT && (internal_desc.Usage & D3DUSAGE_WRITEONLY) == 0)
-		desc.heap = api::memory_heap::readback;
+		desc.heap = api::memory_heap::gpu_to_cpu;
 	else
 		convert_d3d_pool_to_memory_heap(internal_desc.Pool, desc.heap);
 	desc.usage = api::resource_usage::vertex_buffer;
@@ -861,7 +857,7 @@ reshade::api::resource_desc reshade::d3d9::convert_resource_desc(const D3DVERTEX
 
 	if ((internal_desc.Usage & D3DUSAGE_DYNAMIC) != 0)
 	{
-		desc.heap = api::memory_heap::upload;
+		desc.heap = api::memory_heap::cpu_to_gpu;
 		desc.flags |= api::resource_flags::dynamic;
 	}
 

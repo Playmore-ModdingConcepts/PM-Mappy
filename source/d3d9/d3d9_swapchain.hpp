@@ -7,13 +7,10 @@
 
 #include "d3d9_impl_swapchain.hpp"
 
-class Direct3DDevice9;
+struct Direct3DDevice9;
 
-class DECLSPEC_UUID("BC52FCE4-1EAC-40C8-84CF-863600BBAA01") Direct3DSwapChain9 final : public IDirect3DSwapChain9Ex, public reshade::d3d9::swapchain_impl
+struct DECLSPEC_UUID("BC52FCE4-1EAC-40C8-84CF-863600BBAA01") Direct3DSwapChain9 final : IDirect3DSwapChain9Ex, public reshade::d3d9::swapchain_impl
 {
-	friend class Direct3DDevice9;
-
-public:
 	Direct3DSwapChain9(Direct3DDevice9 *device, IDirect3DSwapChain9   *original);
 	Direct3DSwapChain9(Direct3DDevice9 *device, IDirect3DSwapChain9Ex *original);
 	~Direct3DSwapChain9();
@@ -40,19 +37,16 @@ public:
 
 	static bool is_presenting_entire_surface(const RECT *source_rect, HWND hwnd);
 
+	void on_init(bool resize);
+	void on_reset(bool resize);
+	void on_present(const RECT *source_rect, [[maybe_unused]] const RECT *dest_rect, HWND window_override, [[maybe_unused]] const RGNDATA *dirty_region);
+	void handle_device_loss(HRESULT hr);
+
 	bool check_and_upgrade_interface(REFIID riid);
 
 	LONG _ref = 1;
-	bool _extended_interface = false;
-
-private:
-	void on_init([[maybe_unused]] bool resize);
-	void on_reset([[maybe_unused]] bool resize);
-	void on_present(const RECT *source_rect, [[maybe_unused]] const RECT *dest_rect, HWND window_override, [[maybe_unused]] const RGNDATA *dirty_region, DWORD flags);
-	void on_finish_present(HRESULT hr);
-
+	bool _extended_interface;
 	Direct3DDevice9 *const _device;
-
 	bool _is_initialized = false;
 	bool _was_still_drawing_last_frame = false;
 };

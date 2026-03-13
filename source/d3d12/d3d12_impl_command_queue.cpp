@@ -89,9 +89,8 @@ void reshade::d3d12::command_queue_impl::wait_idle() const
 
 void reshade::d3d12::command_queue_impl::flush_immediate_command_list() const
 {
-	// Flush, but do not wait
 	if (_immediate_cmd_list != nullptr)
-		_immediate_cmd_list->flush(false);
+		_immediate_cmd_list->flush();
 }
 
 void reshade::d3d12::command_queue_impl::begin_debug_event(const char *label, const float color[4])

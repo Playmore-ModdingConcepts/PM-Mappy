@@ -4,13 +4,12 @@
  */
 
 #include "d3d12_device.hpp"
-#include "dxgi/dxgi_adapter.hpp"
 #include "dll_log.hpp" // Include late to get 'hr_to_string' helper function
 #include "com_utils.hpp"
 #include "hook_manager.hpp"
 #include "addon_manager.hpp"
 
-std::shared_mutex g_d3d12_adapter_mutex;
+std::shared_mutex g_adapter_mutex;
 
 extern thread_local bool g_in_dxgi_runtime;
 
@@ -23,16 +22,12 @@ extern "C" HRESULT WINAPI D3D12CreateDevice(IUnknown *pAdapter, D3D_FEATURE_LEVE
 		return trampoline(pAdapter, MinimumFeatureLevel, riid, ppDevice);
 
 	// Need to lock during device creation to ensure an existing device proxy cannot be destroyed in while it is queried below
-	const std::unique_lock<std::shared_mutex> lock(g_d3d12_adapter_mutex);
+	const std::unique_lock<std::shared_mutex> lock(g_adapter_mutex);
 
 	reshade::log::message(
 		reshade::log::level::info,
 		"Redirecting D3D12CreateDevice(pAdapter = %p, MinimumFeatureLevel = %x, riid = %s, ppDevice = %p) ...",
 		pAdapter, MinimumFeatureLevel, reshade::log::iid_to_string(riid).c_str(), ppDevice);
-
-	com_ptr<DXGIAdapter> adapter_proxy;
-	if (pAdapter && SUCCEEDED(pAdapter->QueryInterface(&adapter_proxy)))
-		pAdapter = adapter_proxy->_orig;
 
 #if RESHADE_ADDON >= 2
 	if (ppDevice != nullptr)
@@ -51,39 +46,30 @@ extern "C" HRESULT WINAPI D3D12CreateDevice(IUnknown *pAdapter, D3D_FEATURE_LEVE
 	g_in_dxgi_runtime = true;
 	const HRESULT hr = trampoline(pAdapter, MinimumFeatureLevel, riid, ppDevice);
 	g_in_dxgi_runtime = false;
-
-	// Skip calls that only check feature level support
-	if (ppDevice == nullptr)
-		return hr;
-
 	if (FAILED(hr))
 	{
 #if RESHADE_ADDON >= 2
-		reshade::unload_addons();
+		if (ppDevice != nullptr)
+			reshade::unload_addons();
 #endif
-
 		reshade::log::message(reshade::log::level::warning, "D3D12CreateDevice failed with error code %s.", reshade::log::hr_to_string(hr).c_str());
 		return hr;
 	}
+
+	if (ppDevice == nullptr)
+		return hr;
 
 	// The returned device should alway implement the 'ID3D12Device' base interface
 	const auto device = static_cast<ID3D12Device *>(*ppDevice);
 
 	// Direct3D 12 devices are singletons per adapter, so first check if one was already created previously
-	D3D12Device *device_proxy = nullptr;
-	D3D12Device *const device_proxy_existing = get_private_pointer_d3dx<D3D12Device>(device);
-	if (device_proxy_existing != nullptr && device_proxy_existing->_orig == device)
-	{
-		InterlockedIncrement(&device_proxy_existing->_ref);
-		device_proxy = device_proxy_existing;
-	}
-	else
-	{
-		device_proxy = new D3D12Device(device);
-	}
+	const auto device_proxy_existing = get_private_pointer_d3dx<D3D12Device>(device);
+	const auto device_proxy = (device_proxy_existing != nullptr) ? device_proxy_existing : new D3D12Device(device);
+
+	if (device_proxy_existing != nullptr)
+		device_proxy_existing->_ref++;
 
 #if RESHADE_ADDON >= 2
-	// Device proxy was created at this point, which increased the add-on manager reference count, so can release the reference added above again
 	reshade::unload_addons();
 #endif
 

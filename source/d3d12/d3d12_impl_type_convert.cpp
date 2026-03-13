@@ -26,11 +26,11 @@ auto reshade::d3d12::convert_color_space(api::color_space type) -> DXGI_COLOR_SP
 	default:
 		assert(false);
 		[[fallthrough]];
-	case api::color_space::srgb:
+	case api::color_space::srgb_nonlinear:
 		return DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
-	case api::color_space::scrgb:
+	case api::color_space::extended_srgb_linear:
 		return DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
-	case api::color_space::hdr10_pq:
+	case api::color_space::hdr10_st2084:
 		return DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
 	case api::color_space::hdr10_hlg:
 		return DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020;
@@ -40,17 +40,17 @@ auto reshade::d3d12::convert_color_space(DXGI_COLOR_SPACE_TYPE type) -> api::col
 {
 	switch (type)
 	{
-	case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709:
-		return api::color_space::srgb;
-	case DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709:
-		return api::color_space::scrgb;
-	case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
-		return api::color_space::hdr10_pq;
-	case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020:
-		return api::color_space::hdr10_hlg;
 	default:
 		assert(false);
 		return api::color_space::unknown;
+	case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709:
+		return api::color_space::srgb_nonlinear;
+	case DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709:
+		return api::color_space::extended_srgb_linear;
+	case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
+		return api::color_space::hdr10_st2084;
+	case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020:
+		return api::color_space::hdr10_hlg;
 	}
 }
 
@@ -105,6 +105,7 @@ auto reshade::d3d12::convert_barrier_layout_to_usage(D3D12_BARRIER_LAYOUT layout
 	case D3D12_BARRIER_LAYOUT_COMMON:
 	case D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON:
 	case D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COMMON:
+	case D3D12_BARRIER_LAYOUT_VIDEO_QUEUE_COMMON:
 		return api::resource_usage::general;
 	case D3D12_BARRIER_LAYOUT_GENERIC_READ:
 	case D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ:
@@ -392,21 +393,18 @@ void reshade::d3d12::convert_resource_desc(const api::resource_desc &desc, D3D12
 
 	switch (desc.heap)
 	{
-	case api::memory_heap::default_:
+	case api::memory_heap::gpu_only:
 		heap_props.Type = D3D12_HEAP_TYPE_DEFAULT;
 		break;
-	case api::memory_heap::upload:
-	case api::memory_heap::scratch:
+	case api::memory_heap::cpu_only:
+	case api::memory_heap::cpu_to_gpu:
 		heap_props.Type = D3D12_HEAP_TYPE_UPLOAD;
 		break;
-	case api::memory_heap::readback:
+	case api::memory_heap::gpu_to_cpu:
 		heap_props.Type = D3D12_HEAP_TYPE_READBACK;
 		break;
 	case api::memory_heap::custom:
 		heap_props.Type = D3D12_HEAP_TYPE_CUSTOM;
-		break;
-	case api::memory_heap::gpu_upload:
-		heap_props.Type = D3D12_HEAP_TYPE_GPU_UPLOAD;
 		break;
 	}
 
@@ -495,19 +493,16 @@ reshade::api::resource_desc reshade::d3d12::convert_resource_desc(const D3D12_RE
 		desc.flags |= api::resource_flags::sparse_binding;
 		break;
 	case D3D12_HEAP_TYPE_DEFAULT:
-		desc.heap = api::memory_heap::default_;
+		desc.heap = api::memory_heap::gpu_only;
 		break;
 	case D3D12_HEAP_TYPE_UPLOAD:
-		desc.heap = api::memory_heap::upload;
+		desc.heap = api::memory_heap::cpu_to_gpu;
 		break;
 	case D3D12_HEAP_TYPE_READBACK:
-		desc.heap = api::memory_heap::readback;
+		desc.heap = api::memory_heap::gpu_to_cpu;
 		break;
 	case D3D12_HEAP_TYPE_CUSTOM:
 		desc.heap = api::memory_heap::custom;
-		break;
-	case D3D12_HEAP_TYPE_GPU_UPLOAD:
-		desc.heap = api::memory_heap::gpu_upload;
 		break;
 	}
 
@@ -1945,8 +1940,8 @@ auto reshade::d3d12::convert_acceleration_structure_copy_mode(D3D12_RAYTRACING_A
 		return api::acceleration_structure_copy_mode::serialize;
 	case D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_DESERIALIZE:
 		return api::acceleration_structure_copy_mode::deserialize;
-	case D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_VISUALIZATION_DECODE_FOR_TOOLS:
 	default:
+	case D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_VISUALIZATION_DECODE_FOR_TOOLS:
 		assert(false);
 		return static_cast<api::acceleration_structure_copy_mode>(UINT_MAX);
 	}
@@ -1990,8 +1985,8 @@ auto reshade::d3d12::convert_acceleration_structure_post_build_info_type(D3D12_R
 		return api::query_type::acceleration_structure_serialization_size;
 	case D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_CURRENT_SIZE:
 		return api::query_type::acceleration_structure_size;
-	case D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_TOOLS_VISUALIZATION:
 	default:
+	case D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_TOOLS_VISUALIZATION:
 		assert(false);
 		return static_cast<api::query_type>(UINT_MAX);
 	}

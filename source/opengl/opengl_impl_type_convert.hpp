@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <glad/wgl.h>
+#include <GL/glcorearb.h>
 #include "reshade_api_pipeline.hpp"
 #include <vector>
 #include <limits>
@@ -14,6 +14,8 @@ namespace reshade::opengl
 {
 	struct pipeline_impl
 	{
+		void apply(api::pipeline_stage stages) const;
+
 		GLuint program;
 
 		std::vector<api::input_element> input_elements;
@@ -53,18 +55,18 @@ namespace reshade::opengl
 		GLboolean stencil_test;
 		GLuint front_stencil_read_mask;
 		GLuint front_stencil_write_mask;
-		GLuint front_stencil_reference_value;
+		GLint  front_stencil_reference_value;
 		GLenum front_stencil_func;
-		GLenum front_stencil_pass_op;
-		GLenum front_stencil_fail_op;
-		GLenum front_stencil_depth_fail_op;
+		GLenum front_stencil_op_fail;
+		GLenum front_stencil_op_depth_fail;
+		GLenum front_stencil_op_pass;
 		GLuint back_stencil_read_mask;
 		GLuint back_stencil_write_mask;
-		GLuint back_stencil_reference_value;
+		GLint  back_stencil_reference_value;
 		GLenum back_stencil_func;
-		GLenum back_stencil_pass_op;
-		GLenum back_stencil_fail_op;
-		GLenum back_stencil_depth_fail_op;
+		GLenum back_stencil_op_fail;
+		GLenum back_stencil_op_depth_fail;
+		GLenum back_stencil_op_pass;
 	};
 
 	struct descriptor_table_impl
@@ -146,8 +148,8 @@ namespace reshade::opengl
 	GLenum convert_stencil_op(api::stencil_op value);
 	auto   convert_primitive_topology(GLenum value) -> api::primitive_topology;
 	GLenum convert_primitive_topology(api::primitive_topology value);
-	GLenum convert_query_type(api::query_type value);
-	GLenum convert_shader_type(api::shader_stage value);
+	GLenum convert_query_type(api::query_type type);
+	GLenum convert_shader_type(api::shader_stage type);
 }
 
 template <typename T>

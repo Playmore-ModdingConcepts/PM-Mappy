@@ -7,10 +7,9 @@
 [submodule "stb"]
 	path = deps/stb
 	url = https://github.com/nothings/stb.git
-[submodule "glad"]
-	path = deps/glad
-	url = https://github.com/Dav1dde/glad
-	branch = glad2
+[submodule "gl3w"]
+	path = deps/gl3w
+	url = https://github.com/skaslev/gl3w.git
 [submodule "utfcpp"]
 	path = deps/utfcpp
 	url = https://github.com/nemtrif/utfcpp.git
@@ -21,6 +20,9 @@
 [submodule "vma"]
 	path = deps/vma
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "vulkan"]
+	path = deps/vulkan
+	url = https://github.com/KhronosGroup/Vulkan-Headers.git
 [submodule "fpng"]
 	path = deps/fpng
 	url = https://github.com/richgel999/fpng
@@ -30,7 +32,3 @@
 [submodule "openxr"]
 	path = deps/openxr
 	url = https://github.com/KhronosGroup/OpenXR-SDK.git
-[submodule "jxl_simple_lossless"]
-	path = deps/jxl_simple_lossless
-	url = https://github.com/kampidh/simple-lossless-encoder.git
-	branch = headers-and-color-profile

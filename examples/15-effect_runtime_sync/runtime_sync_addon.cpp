@@ -8,7 +8,6 @@
 #include <vector>
 #include <shared_mutex>
 #include <algorithm> // std::remove
-#include <Windows.h>
 
 using namespace reshade::api;
 

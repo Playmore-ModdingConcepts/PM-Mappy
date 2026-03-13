@@ -141,10 +141,10 @@
     <None Include="Properties\AssemblyInfo.cs.in" />
   </ItemGroup>
   <ItemGroup>
-    <Archive Include="ReShade32.json" />
-    <Archive Include="ReShade32_XR.json" />
-    <Archive Include="ReShade64.json" />
-    <Archive Include="ReShade64_XR.json" />
+    <Archive Include="Mappy32.json" />
+    <Archive Include="Mappy32_XR.json" />
+    <Archive Include="Mappy64.json" />
+    <Archive Include="Mappy64_XR.json" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Pages\Resources\DirectX.png">

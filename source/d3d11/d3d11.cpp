@@ -6,7 +6,6 @@
 #include "d3d11_device.hpp"
 #include "d3d11_device_context.hpp"
 #include "dxgi/dxgi_factory.hpp"
-#include "dxgi/dxgi_adapter.hpp"
 #include "dll_log.hpp" // Include late to get 'hr_to_string' helper function
 #include "hook_manager.hpp"
 #include "addon_manager.hpp"
@@ -41,22 +40,17 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 		"Redirecting D3D11CreateDeviceAndSwapChain(pAdapter = %p, DriverType = %d, Software = %p, Flags = %#x, pFeatureLevels = %p, FeatureLevels = %u, SDKVersion = %u, pSwapChainDesc = %p, ppSwapChain = %p, ppDevice = %p, pFeatureLevel = %p, ppImmediateContext = %p) ...",
 		pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, pSwapChainDesc, ppSwapChain, ppDevice, pFeatureLevel, ppImmediateContext);
 
-	com_ptr<DXGIAdapter> adapter_proxy;
-	if (pAdapter && SUCCEEDED(pAdapter->QueryInterface(&adapter_proxy)))
-		pAdapter = adapter_proxy->_orig;
-
 #ifndef NDEBUG
 	// Remove flag that prevents turning on the debug layer
 	Flags &= ~D3D11_CREATE_DEVICE_PREVENT_ALTERING_LAYER_SETTINGS_FROM_REGISTRY;
 #endif
 
 #if RESHADE_ADDON >= 2
-	const D3D_FEATURE_LEVEL orig_feature_level = (pFeatureLevels != nullptr && FeatureLevels > 0) ? pFeatureLevels[0] : D3D_FEATURE_LEVEL_11_0;
-	uint32_t api_version = static_cast<uint32_t>(orig_feature_level);
 	if (ppDevice != nullptr)
 	{
 		reshade::load_addons();
 
+		uint32_t api_version = (pFeatureLevels != nullptr && FeatureLevels > 0) ? pFeatureLevels[0] : D3D_FEATURE_LEVEL_11_0;
 		if (reshade::invoke_addon_event<reshade::addon_event::create_device>(reshade::api::device_api::d3d11, api_version))
 		{
 			FeatureLevels = 1;
@@ -79,71 +73,38 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 #endif
 
 	// Use local feature level variable in case the application did not pass one in
-	D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
+	D3D_FEATURE_LEVEL FeatureLevel = D3D_FEATURE_LEVEL_11_0;
 
 	g_in_dxgi_runtime = true;
-	HRESULT hr = trampoline(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, nullptr, nullptr, ppDevice, &feature_level, nullptr);
+	HRESULT hr = trampoline(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, nullptr, nullptr, ppDevice, &FeatureLevel, nullptr);
 	g_in_dxgi_runtime = false;
-
-	if (pFeatureLevel != nullptr) // Copy feature level value to application variable if the argument exists
+	if (FAILED(hr))
 	{
 #if RESHADE_ADDON >= 2
-		if (feature_level > orig_feature_level)
-			*pFeatureLevel = orig_feature_level;
-		else
+		if (ppDevice != nullptr)
+			reshade::unload_addons();
 #endif
-			*pFeatureLevel = feature_level;
+		reshade::log::message(reshade::log::level::warning, "D3D11CreateDeviceAndSwapChain failed with error code %s.", reshade::log::hr_to_string(hr).c_str());
+		return hr;
 	}
 
-	// Skip calls that only check feature level support
+	if (pFeatureLevel != nullptr) // Copy feature level value to application variable if the argument exists
+		*pFeatureLevel = FeatureLevel;
+
+	reshade::log::message(reshade::log::level::info, "Using feature level %x.", FeatureLevel);
+
+	// It is valid for the device out parameter to be NULL if the application wants to check feature level support, so just return early in that case
 	if (ppDevice == nullptr)
 	{
 		assert(ppSwapChain == nullptr && ppImmediateContext == nullptr);
 		return hr;
 	}
 
-	if (FAILED(hr))
-	{
-#if RESHADE_ADDON >= 2
-		reshade::unload_addons();
-#endif
-
-		reshade::log::message(reshade::log::level::warning, "D3D11CreateDeviceAndSwapChain failed with error code %s.", reshade::log::hr_to_string(hr).c_str());
-		return hr;
-	}
-
-	reshade::log::message(reshade::log::level::info, "Using feature level %x.", feature_level);
-
 	auto device = *ppDevice;
 	// Query for the DXGI device and immediate device context since we need to reference them in the proxy device
 	com_ptr<IDXGIDevice1> dxgi_device;
 	hr = device->QueryInterface(&dxgi_device);
 	assert(SUCCEEDED(hr));
-
-	com_ptr<IDXGIFactory> factory;
-	com_ptr<IDXGIAdapter> adapter;
-	if (adapter_proxy == nullptr)
-	{
-		// Fall back to the same adapter as the device if it was not explicitly specified in the argument list
-		hr = dxgi_device->GetAdapter(&adapter);
-		assert(SUCCEEDED(hr)); // Lets just assume this works =)
-		hr = adapter->GetParent(IID_PPV_ARGS(&factory));
-		assert(SUCCEEDED(hr));
-
-		// Only create proxy factory when not using vtable hooking for 'IDXGIFactory::CreateSwapChain'
-		if (!reshade::hooks::is_hooked(reshade::hooks::vtable_from_instance(factory.get()) + 10))
-		{
-			factory = com_ptr<IDXGIFactory>(new DXGIFactory(factory.release()), true);
-			adapter = com_ptr<IDXGIAdapter>(new DXGIAdapter(factory.get(), adapter.release()), true);
-		}
-	}
-	else
-	{
-		hr = adapter_proxy->GetParent(IID_PPV_ARGS(&factory));
-		assert(SUCCEEDED(hr));
-
-		adapter = std::move(reinterpret_cast<com_ptr<IDXGIAdapter> &>(adapter_proxy));
-	}
 
 	// Create device proxy unless this is a software device (used by D2D for example)
 	D3D11Device *device_proxy = nullptr;
@@ -152,7 +113,7 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 		reshade::log::message(reshade::log::level::warning, "Skipping device because the driver type is 'D3D_DRIVER_TYPE_WARP' or 'D3D_DRIVER_TYPE_REFERENCE'.");
 	}
 	else if (DXGI_ADAPTER_DESC adapter_desc;
-		SUCCEEDED(adapter->GetDesc(&adapter_desc)) &&
+		pAdapter != nullptr && SUCCEEDED(pAdapter->GetDesc(&adapter_desc)) &&
 		adapter_desc.VendorId == 0x1414 /* Microsoft */ && adapter_desc.DeviceId == 0x8C /* Microsoft Basic Render Driver */)
 	{
 		reshade::log::message(reshade::log::level::warning, "Skipping device because it uses the Microsoft Basic Render Driver.");
@@ -163,12 +124,8 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 		device->GetImmediateContext(&device_context);
 
 		// Change device to proxy for swap chain creation below
-		device = device_proxy = new D3D11Device(adapter.get(), dxgi_device.get(), device);
+		device = device_proxy = new D3D11Device(dxgi_device.get(), device);
 		device_proxy->_immediate_context = new D3D11DeviceContext(device_proxy, device_context);
-#if RESHADE_ADDON >= 2
-		if (feature_level > orig_feature_level)
-			device_proxy->_orig_feature_level = orig_feature_level;
-#endif
 	}
 
 	// Swap chain creation is piped through the 'IDXGIFactory::CreateSwapChain' function hook
@@ -176,13 +133,25 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 	{
 		assert(ppSwapChain != nullptr);
 
+		com_ptr<IDXGIAdapter> adapter(pAdapter, false);
+		// Fall back to the same adapter as the device if it was not explicitly specified in the argument list
+		if (adapter == nullptr)
+		{
+			hr = dxgi_device->GetAdapter(&adapter);
+			assert(SUCCEEDED(hr)); // Lets just assume this works =)
+		}
+
+		// Time to find a factory associated with the target adapter and create a swap chain with it
+		com_ptr<IDXGIFactory> factory;
+		hr = adapter->GetParent(IID_PPV_ARGS(&factory));
+		assert(SUCCEEDED(hr));
+
 		reshade::log::message(reshade::log::level::info, "Calling IDXGIFactory::CreateSwapChain:");
 
-		hr = factory->CreateSwapChain(device, const_cast<DXGI_SWAP_CHAIN_DESC *>(pSwapChainDesc), ppSwapChain);
+		hr = IDXGIFactory_CreateSwapChain_Impl(factory.get(), device, const_cast<DXGI_SWAP_CHAIN_DESC *>(pSwapChainDesc), ppSwapChain);
 	}
 
 #if RESHADE_ADDON >= 2
-	// Device proxy was created at this point, which increased the add-on manager reference count, so can release the reference added above again
 	reshade::unload_addons();
 #endif
 

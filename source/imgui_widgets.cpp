@@ -13,33 +13,9 @@
 
 extern std::filesystem::path g_reshade_base_path;
 
-extern bool resolve_path(std::filesystem::path &path, std::error_code &ec, const std::filesystem::path &base = g_reshade_base_path);
-extern std::string expand_macro_string(const std::string &input, std::vector<std::pair<std::string, std::string>> macros = {});
-
-// Resolve environment variables in input text widgets when tab is pressed
-static auto resolve_macros(ImGuiInputTextCallbackData *data) -> int
-{
-	const std::string text(data->Buf, data->BufTextLen);
-	const std::string resolved = expand_macro_string(text);
-
-	if (resolved != text)
-	{
-		const int buf_len = static_cast<int>(resolved.copy(data->Buf, data->BufSize - 1));
-		data->Buf[buf_len] = '\0';
-
-		data->CursorPos += buf_len - data->BufTextLen;
-		data->BufTextLen = buf_len;
-		data->BufDirty = true;
-	}
-
-	return 0;
-}
-
 static bool is_activate_key_pressed()
 {
-	return ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
-		ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_RightArrow) ||
-		ImGui::IsKeyPressed(ImGui::GetIO().ConfigNavSwapGamepadButtons ? ImGuiKey_GamepadFaceRight : ImGuiKey_GamepadFaceDown); // See 'ImGuiKey_NavGamepadActivate'
+	return ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left); // See 'ImGuiKey_NavGamepadActivate'
 }
 
 bool reshade::imgui::path_list(const char *label, std::vector<std::filesystem::path> &paths, std::filesystem::path &dialog_path, const std::filesystem::path &default_path)
@@ -66,7 +42,7 @@ bool reshade::imgui::path_list(const char *label, std::vector<std::filesystem::p
 			buf[buf_len] = '\0';
 
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - (button_spacing + button_size));
-			if (ImGui::InputText("##path", buf, sizeof(buf), ImGuiInputTextFlags_CallbackCompletion, &resolve_macros))
+			if (ImGui::InputText("##path", buf, sizeof(buf)))
 			{
 				res = true;
 				paths[i] = std::filesystem::u8path(buf);
@@ -115,11 +91,8 @@ bool reshade::imgui::path_list(const char *label, std::vector<std::filesystem::p
 
 	ImGui::PopID();
 
-	if (ImGui::FindRenderedTextEnd(label) != label)
-	{
-		ImGui::SameLine(0, button_spacing);
-		ImGui::TextUnformatted(label);
-	}
+	ImGui::SameLine(0, button_spacing);
+	ImGui::TextUnformatted(label);
 
 	ImGui::EndGroup();
 
@@ -134,7 +107,7 @@ bool reshade::imgui::file_dialog(const char *name, std::filesystem::path &path, 
 	std::error_code ec;
 	if (path.empty())
 		path = L".\\";
-	if (path.is_relative() && path.native()[0] != L'%')
+	if (path.is_relative())
 		path = g_reshade_base_path / path;
 	std::filesystem::path parent_path = path.parent_path();
 
@@ -143,7 +116,7 @@ bool reshade::imgui::file_dialog(const char *name, std::filesystem::path &path, 
 		buf[buf_len] = '\0';
 
 		ImGui::SetNextItemWidth(width);
-		if (ImGui::InputText("##path", buf, sizeof(buf), ImGuiInputTextFlags_CallbackCompletion, &resolve_macros))
+		if (ImGui::InputText("##path", buf, sizeof(buf)))
 		{
 			path = std::filesystem::u8path(buf);
 			if ((path.has_stem() && std::filesystem::is_directory(path, ec)) || (path.has_root_name() && path == path.root_name()))
@@ -169,15 +142,13 @@ bool reshade::imgui::file_dialog(const char *name, std::filesystem::path &path, 
 		}
 	}
 
-	resolve_path(parent_path, ec);
-
 	std::vector<std::filesystem::path> file_entries;
 	for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(parent_path, std::filesystem::directory_options::skip_permission_denied, ec))
 	{
 		if (entry.path().has_filename() && entry.path().filename().native().front() == L'.')
 			continue; // Skip "hidden" files and directories
 
-		if (entry.is_directory(ec))
+		if (entry.is_directory())
 		{
 			const bool selected = (entry == path);
 
@@ -246,7 +217,7 @@ bool reshade::imgui::file_dialog(const char *name, std::filesystem::path &path, 
 		buf[buf_len] = '\0';
 
 		ImGui::SetNextItemWidth(std::max(0.0f, width - (2 * (button_spacing + button_size))));
-		if (ImGui::InputText("##name", buf, sizeof(buf), ImGuiInputTextFlags_CallbackCompletion, &resolve_macros))
+		if (ImGui::InputText("##name", buf, sizeof(buf)))
 			path = path.parent_path() / buf;
 	}
 
@@ -258,7 +229,7 @@ bool reshade::imgui::file_dialog(const char *name, std::filesystem::path &path, 
 	// Navigate into directory when clicking select button
 	if (select && path.has_stem() && std::filesystem::is_directory(path, ec))
 		path += std::filesystem::path::preferred_separator;
-
+	
 	// Convert entry extension to lowercase before parsing
 	std::wstring path_ext = path.extension().wstring();
 	std::transform(path_ext.begin(), path_ext.end(), path_ext.begin(), std::towlower);
@@ -317,32 +288,24 @@ bool reshade::imgui::key_input_box(const char *name, unsigned int key[4], const 
 	return res;
 }
 
-bool reshade::imgui::font_input_box(const char *name, const char *hint, std::filesystem::path &path, std::filesystem::path &dialog_path, float &size)
+bool reshade::imgui::font_input_box(const char *name, const char *hint, std::filesystem::path &path, std::filesystem::path &dialog_path, int &size)
 {
 	bool res = false;
 
 	const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
 
-	const float item_width = ImGui::CalcItemWidth() - (spacing + 5.0f * ImGui::GetFrameHeight());
-
 	ImGui::BeginGroup();
 	ImGui::PushID(name);
 
-	if (item_width > 100.0f)
-		ImGui::SetNextItemWidth(item_width);
+	ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - spacing - 80);
 	if (file_input_box("##font", hint, path, dialog_path, { L".ttf", L".ttc" }))
 		res = true;
 
-	if (item_width > 100.0f)
-	{
-		ImGui::SameLine(0, spacing);
-		ImGui::SetNextItemWidth(5.0f * ImGui::GetFrameHeight());
-		const float size_min = 8;
-		const float size_max = 32;
-		const float size_speed = 1.0f;
-		if (slider_with_buttons("##size", ImGuiDataType_Float, &size, 1, &size_speed, &size_min, &size_max, "%.0f"))
-			res = true;
-	}
+	ImGui::SameLine(0, spacing);
+	ImGui::SetNextItemWidth(80);
+	ImGui::SliderInt("##size", &size, 8, 32, "%d", ImGuiSliderFlags_AlwaysClamp);
+	if (ImGui::IsItemDeactivatedAfterEdit())
+		res = true;
 
 	ImGui::PopID();
 
@@ -393,7 +356,7 @@ bool reshade::imgui::file_input_box(const char *name, const char *hint, std::fil
 	buf[buf_len] = '\0'; // Null-terminate string
 
 	ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - (button_spacing + button_size));
-	if (ImGui::InputTextWithHint("##path", hint, buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCompletion, &resolve_macros))
+	if (ImGui::InputTextWithHint("##path", hint, buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue))
 	{
 		dialog_path = std::filesystem::u8path(buf);
 		// Convert path extension to lowercase before parsing
@@ -442,10 +405,8 @@ bool reshade::imgui::directory_input_box(const char *name, std::filesystem::path
 	buf[buf_len] = '\0'; // Null-terminate string
 
 	ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - (button_spacing + button_size));
-	if (ImGui::InputText("##path", buf, sizeof(buf), ImGuiInputTextFlags_CallbackCompletion, &resolve_macros))
-	{
+	if (ImGui::InputText("##path", buf, sizeof(buf)))
 		path = std::filesystem::u8path(buf), res = true;
-	}
 
 	ImGui::SameLine(0, button_spacing);
 	if (ImGui::Button(ICON_FK_FOLDER_OPEN, ImVec2(button_size, 0)))
@@ -486,11 +447,8 @@ bool reshade::imgui::radio_list(const char *label, const std::string_view ui_ite
 	for (size_t offset = 0, next, i = 0; (next = ui_items.find('\0', offset)) != std::string_view::npos; offset = next + 1, ++i)
 		res |= ImGui::RadioButton(ui_items.data() + offset, v, static_cast<int>(i));
 
-	if (ImGui::FindRenderedTextEnd(label) != label)
-	{
-		ImGui::SameLine(item_width, ImGui::GetStyle().ItemInnerSpacing.x);
-		ImGui::TextUnformatted(label);
-	}
+	ImGui::SameLine(item_width, ImGui::GetStyle().ItemInnerSpacing.x);
+	ImGui::TextUnformatted(label);
 
 	ImGui::EndGroup();
 
@@ -511,11 +469,8 @@ bool reshade::imgui::checkbox_list(const char *label, const std::string_view ui_
 	for (size_t offset = 0, next, i = 0; (next = ui_items.find('\0', offset)) != std::string_view::npos && i < static_cast<size_t>(components); offset = next + 1, ++i)
 		res |= ImGui::Checkbox(ui_items.data() + offset, reinterpret_cast<bool *>(&v[i]));
 
-	if (ImGui::FindRenderedTextEnd(label) != label)
-	{
-		ImGui::SameLine(item_width, ImGui::GetStyle().ItemInnerSpacing.x);
-		ImGui::TextUnformatted(label);
-	}
+	ImGui::SameLine(item_width, ImGui::GetStyle().ItemInnerSpacing.x);
+	ImGui::TextUnformatted(label);
 
 	ImGui::EndGroup();
 
@@ -655,11 +610,8 @@ bool reshade::imgui::list_with_buttons(const char *label, const std::string_view
 	ImGui::EndGroup();
 	const bool is_hovered = ImGui::IsItemHovered();
 
-	if (ImGui::FindRenderedTextEnd(label) != label)
-	{
-		ImGui::SameLine(0, button_spacing);
-		ImGui::TextUnformatted(label);
-	}
+	ImGui::SameLine(0, button_spacing);
+	ImGui::TextUnformatted(label);
 
 	ImGui::EndGroup();
 
@@ -757,11 +709,8 @@ bool reshade::imgui::combo_with_buttons(const char *label, const std::string_vie
 
 	ImGui::PopID();
 
-	if (ImGui::FindRenderedTextEnd(label) != label)
-	{
-		ImGui::SameLine(0, button_spacing);
-		ImGui::TextUnformatted(label);
-	}
+	ImGui::SameLine(0, button_spacing);
+	ImGui::TextUnformatted(label);
 
 	ImGui::EndGroup();
 
@@ -779,7 +728,7 @@ static bool drag_with_buttons(const char *label, T *v, int components, T v_speed
 	const auto item_width = ImGui::CalcItemWidth();
 	const auto item_width_with_buttons = item_width - (components * 2 * (button_spacing + button_size));
 
-	const bool with_buttons = item_width_with_buttons > 50 * components && !ImGui::GetIO().KeyShift;
+	const bool with_buttons = item_width_with_buttons > 50 * components;
 	const bool ignore_limits = ImGui::GetIO().KeyCtrl;
 
 	ImGui::BeginGroup();
@@ -851,11 +800,8 @@ static bool drag_with_buttons(const char *label, T *v, int components, T v_speed
 
 	ImGui::PopID();
 
-	if (ImGui::FindRenderedTextEnd(label) != label)
-	{
-		ImGui::SameLine(0, button_spacing);
-		ImGui::TextUnformatted(label);
-	}
+	ImGui::SameLine(0, button_spacing);
+	ImGui::TextUnformatted(label);
 
 	ImGui::EndGroup();
 
@@ -866,6 +812,9 @@ bool reshade::imgui::drag_with_buttons(const char *label, ImGuiDataType data_typ
 {
 	switch (data_type)
 	{
+	default:
+		assert(false); // Not implemented
+		return false;
 	case ImGuiDataType_S32:
 		return ::drag_with_buttons<ImS32, ImGuiDataType_S32>(label, static_cast<ImS32 *>(v), components, *static_cast<const ImS32 *>(v_speed), *static_cast<const ImS32 *>(v_min), *static_cast<const ImS32 *>(v_max), format);
 	case ImGuiDataType_U32:
@@ -880,9 +829,6 @@ bool reshade::imgui::drag_with_buttons(const char *label, ImGuiDataType data_typ
 	case ImGuiDataType_Double:
 		return ::drag_with_buttons<double, ImGuiDataType_Double>(label, static_cast<double *>(v), components, *static_cast<const double *>(v_speed), *static_cast<const double *>(v_min), *static_cast<const double *>(v_max), format);
 #endif
-	default:
-		assert(false); // Not implemented
-		return false;
 	}
 }
 
@@ -897,7 +843,7 @@ static bool slider_with_buttons(const char *label, T *v, int components, T v_spe
 	const auto item_width = ImGui::CalcItemWidth();
 	const auto item_width_with_buttons = item_width - (components * 2 * (button_spacing + button_size));
 
-	const bool with_buttons = item_width_with_buttons > 50 * components && !ImGui::GetIO().KeyShift;
+	const bool with_buttons = item_width_with_buttons > 50 * components;
 	const bool ignore_limits = ImGui::GetIO().KeyCtrl;
 
 	ImGui::BeginGroup();
@@ -969,11 +915,8 @@ static bool slider_with_buttons(const char *label, T *v, int components, T v_spe
 
 	ImGui::PopID();
 
-	if (ImGui::FindRenderedTextEnd(label) != label)
-	{
-		ImGui::SameLine(0, button_spacing);
-		ImGui::TextUnformatted(label);
-	}
+	ImGui::SameLine(0, button_spacing);
+	ImGui::TextUnformatted(label);
 
 	ImGui::EndGroup();
 
@@ -984,6 +927,9 @@ bool reshade::imgui::slider_with_buttons(const char *label, ImGuiDataType data_t
 {
 	switch (data_type)
 	{
+	default:
+		assert(false); // Not implemented
+		return false;
 	case ImGuiDataType_S32:
 		return ::slider_with_buttons<ImS32, ImGuiDataType_S32>(label, static_cast<ImS32 *>(v), components, *static_cast<const ImS32 *>(v_speed), *static_cast<const ImS32 *>(v_min), *static_cast<const ImS32 *>(v_max), format);
 	case ImGuiDataType_U32:
@@ -998,9 +944,6 @@ bool reshade::imgui::slider_with_buttons(const char *label, ImGuiDataType data_t
 	case ImGuiDataType_Double:
 		return ::slider_with_buttons<double, ImGuiDataType_Double>(label, static_cast<double *>(v), components, *static_cast<const double *>(v_speed), *static_cast<const double *>(v_min), *static_cast<const double *>(v_max), format);
 #endif
-	default:
-		assert(false); // Not implemented
-		return false;
 	}
 }
 
@@ -1020,11 +963,8 @@ bool reshade::imgui::slider_for_alpha_value(const char *label, float *v)
 
 	ImGui::PopID();
 
-	if (ImGui::FindRenderedTextEnd(label) != label)
-	{
-		ImGui::SameLine(0, button_spacing);
-		ImGui::TextUnformatted(label);
-	}
+	ImGui::SameLine(0, button_spacing);
+	ImGui::TextUnformatted(label);
 
 	ImGui::EndGroup();
 
@@ -1036,10 +976,8 @@ void reshade::imgui::image_with_checkerboard_background(ImTextureID user_texture
 	ImDrawList *const draw_list = ImGui::GetWindowDrawList();
 
 	// Render background checkerboard pattern
-	ImVec2 pos_min = ImGui::GetCursorScreenPos();
-	ImVec2 pos_max = pos_min + size; int yi = 0;
-	pos_min = ImMax(pos_min, draw_list->GetClipRectMin());
-	pos_max = ImMin(pos_max, draw_list->GetClipRectMax());
+	const ImVec2 pos_min = ImGui::GetCursorScreenPos();
+	const ImVec2 pos_max = ImVec2(pos_min.x + size.x, pos_min.y + size.y); int yi = 0;
 
 	for (float y = pos_min.y, grid_size = 25.0f; y < pos_max.y; y += grid_size, yi++)
 	{

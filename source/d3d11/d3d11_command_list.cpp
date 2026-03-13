@@ -6,7 +6,6 @@
 #include "d3d11_device.hpp"
 #include "d3d11_command_list.hpp"
 #include "dll_log.hpp"
-#include "com_utils.hpp"
 #include "addon_manager.hpp"
 
 D3D11CommandList::D3D11CommandList(D3D11Device *device, ID3D11CommandList *original) :
@@ -46,14 +45,6 @@ HRESULT STDMETHODCALLTYPE D3D11CommandList::QueryInterface(REFIID riid, void **p
 	{
 		AddRef();
 		*ppvObj = this;
-		return S_OK;
-	}
-
-	// Interface ID to query the original object from a proxy object
-	if (riid == IID_UnwrappedObject)
-	{
-		_orig->AddRef();
-		*ppvObj = _orig;
 		return S_OK;
 	}
 

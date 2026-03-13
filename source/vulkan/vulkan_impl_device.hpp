@@ -5,25 +5,19 @@
 
 #pragma once
 
-#include <glad/vulkan.h>
 #pragma warning(push)
-#pragma warning(disable: 4100 4324 4189) // Disable a bunch of warnings thrown by VMA code
-#define VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_EXT VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR
+#pragma warning(disable: 4100 4127 4324 4505 4189) // Disable a bunch of warnings thrown by VMA code
 #include <vk_mem_alloc.h>
 #pragma warning(pop)
+#include <vk_layer_dispatch_table.h>
+
 #include "reshade_api_object_impl.hpp"
-#include <mutex>
 #include <shared_mutex>
-#include <vector>
 #include <unordered_map>
 
 namespace reshade::vulkan
 {
 	template <VkObjectType type> struct object_data;
-
-	class command_list_impl;
-	class command_list_immediate_impl;
-	class command_queue_impl;
 
 	class device_impl : public api::api_object_impl<VkDevice, api::device>
 	{
@@ -37,7 +31,14 @@ namespace reshade::vulkan
 			VkPhysicalDevice physical_device,
 			VkInstance instance,
 			uint32_t api_version,
-			const GladVulkanContext &dispatch_table, const VkPhysicalDeviceFeatures &enabled_features);
+			const VkLayerInstanceDispatchTable &instance_table, const VkLayerDispatchTable &device_table, const VkPhysicalDeviceFeatures &enabled_features,
+			bool push_descriptors_ext = false,
+			bool dynamic_rendering_ext = false,
+			bool timeline_semaphore_ext = false,
+			bool custom_border_color_ext = false,
+			bool extended_dynamic_state_ext = false,
+			bool conservative_rasterization_ext = false,
+			bool ray_tracing_ext = false);
 		~device_impl();
 
 		api::device_api get_api() const final { return api::device_api::vulkan; }
@@ -50,7 +51,7 @@ namespace reshade::vulkan
 		bool create_sampler(const api::sampler_desc &desc, api::sampler *out_sampler) final;
 		void destroy_sampler(api::sampler sampler) final;
 
-		bool create_resource(const api::resource_desc &desc, const api::subresource_data *initial_data, api::resource_usage initial_state, api::resource *out_resource, void **shared_handle = nullptr) final;
+		bool create_resource(const api::resource_desc &desc, const api::subresource_data *initial_data, api::resource_usage initial_state, api::resource *out_resource, HANDLE *shared_handle = nullptr) final;
 		void destroy_resource(api::resource resource) final;
 
 		api::resource_desc get_resource_desc(api::resource resource) const final;
@@ -61,7 +62,6 @@ namespace reshade::vulkan
 		api::resource get_resource_from_view(api::resource_view view) const final;
 		api::resource_view_desc get_resource_view_desc(api::resource_view view) const final;
 
-		uint64_t get_resource_gpu_address(api::resource resource) const;
 		uint64_t get_resource_view_gpu_address(api::resource_view view) const final;
 
 		bool map_buffer_region(api::resource resource, uint64_t offset, uint64_t size, api::map_access access, void **out_data) final;
@@ -69,8 +69,8 @@ namespace reshade::vulkan
 		bool map_texture_region(api::resource resource, uint32_t subresource, const api::subresource_box *box, api::map_access access, api::subresource_data *out_data) final;
 		void unmap_texture_region(api::resource resource, uint32_t subresource) final;
 
-		void update_buffer_region(const void *data, api::resource dest, uint64_t dest_offset, uint64_t size) final;
-		void update_texture_region(const api::subresource_data &data, api::resource dest, uint32_t dest_subresource, const api::subresource_box *dest_box) final;
+		void update_buffer_region(const void *data, api::resource resource, uint64_t offset, uint64_t size) final;
+		void update_texture_region(const api::subresource_data &data, api::resource resource, uint32_t subresource, const api::subresource_box *box) final;
 
 		bool create_pipeline(api::pipeline_layout layout, uint32_t subobject_count, const api::pipeline_subobject *subobjects, api::pipeline *out_pipeline) final;
 		void destroy_pipeline(api::pipeline pipeline) final;
@@ -94,7 +94,7 @@ namespace reshade::vulkan
 		void set_resource_name(api::resource resource, const char *name) final;
 		void set_resource_view_name(api::resource_view view, const char *name) final;
 
-		bool create_fence(uint64_t initial_value, api::fence_flags flags, api::fence *out_fence, void **shared_handle = nullptr) final;
+		bool create_fence(uint64_t initial_value, api::fence_flags flags, api::fence *out_fence, HANDLE *shared_handle = nullptr) final;
 		void destroy_fence(api::fence fence) final;
 
 		uint64_t get_completed_fence_value(api::fence fence) const final;
@@ -105,6 +105,8 @@ namespace reshade::vulkan
 		void get_acceleration_structure_size(api::acceleration_structure_type type, api::acceleration_structure_build_flags flags, uint32_t input_count, const api::acceleration_structure_build_input *inputs, uint64_t *out_size, uint64_t *out_build_scratch_size, uint64_t *out_update_scratch_size) const final;
 
 		bool get_pipeline_shader_group_handles(api::pipeline pipeline, uint32_t first, uint32_t count, void *out_handles) final;
+
+		void advance_transient_descriptor_pool();
 
 		command_list_immediate_impl *get_immediate_command_list();
 
@@ -139,7 +141,7 @@ namespace reshade::vulkan
 		}
 
 		template <VkObjectType type, bool optional = false>
-		PFORCEINLINE object_data<type> *get_private_data_for_object(typename object_data<type>::Handle object) const
+		__forceinline object_data<type> *get_private_data_for_object(typename object_data<type>::Handle object) const
 		{
 			assert(object != VK_NULL_HANDLE);
 			uint64_t private_data = 0;
@@ -149,11 +151,20 @@ namespace reshade::vulkan
 		}
 
 		const VkPhysicalDevice _physical_device;
-		std::vector<command_queue_impl *> _queues;
+		const VkLayerDispatchTable _dispatch_table;
+		const VkLayerInstanceDispatchTable _instance_dispatch_table;
+
 		command_queue_impl *_primary_graphics_queue = nullptr;
 		uint32_t _primary_graphics_queue_family_index = std::numeric_limits<uint32_t>::max();
+		std::vector<command_queue_impl *> _queues;
 
-		const GladVulkanContext _dispatch_table;
+		const bool _push_descriptor_ext;
+		const bool _dynamic_rendering_ext;
+		const bool _timeline_semaphore_ext;
+		const bool _custom_border_color_ext;
+		const bool _extended_dynamic_state_ext;
+		const bool _conservative_rasterization_ext;
+		const bool _ray_tracing_ext;
 		const VkPhysicalDeviceFeatures _enabled_features;
 
 	private:
@@ -161,6 +172,9 @@ namespace reshade::vulkan
 
 		VmaAllocator _alloc = nullptr;
 		VkDescriptorPool _descriptor_pool = VK_NULL_HANDLE;
+		VkDescriptorPool _transient_descriptor_pool[4] = {};
+		uint32_t _transient_index = 0;
+
 		VkPrivateDataSlot _private_data_slot = VK_NULL_HANDLE;
 
 		std::shared_mutex _mutex;

@@ -6,8 +6,6 @@
 #include "d3d11_device.hpp"
 #include "d3d11_device_context.hpp"
 #include "d3d11on12_device.hpp"
-#include "dxgi/dxgi_factory.hpp"
-#include "dxgi/dxgi_adapter.hpp"
 #include "d3d12/d3d12_device.hpp"
 #include "d3d12/d3d12_command_queue.hpp"
 #include "dll_log.hpp" // Include late to get 'hr_to_string' helper function
@@ -53,49 +51,34 @@ extern "C" HRESULT WINAPI D3D11On12CreateDevice(IUnknown *pDevice, UINT Flags, C
 	}
 
 	// Use local feature level variable in case the application did not pass one in
-	D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
+	D3D_FEATURE_LEVEL FeatureLevel = D3D_FEATURE_LEVEL_11_0;
 
 	g_in_dxgi_runtime = true;
-	HRESULT hr = trampoline(pDevice, Flags, pFeatureLevels, FeatureLevels, command_queues.p, NumQueues, NodeMask, ppDevice, nullptr, &feature_level);
+	HRESULT hr = trampoline(pDevice, Flags, pFeatureLevels, FeatureLevels, command_queues.p, NumQueues, NodeMask, ppDevice, nullptr, &FeatureLevel);
 	g_in_dxgi_runtime = false;
-
-	if (pChosenFeatureLevel != nullptr) // Copy feature level value to application variable if the argument exists
-		*pChosenFeatureLevel = feature_level;
-
-	// Skip calls that only check feature level support
-	if (ppDevice == nullptr)
-	{
-		assert(ppImmediateContext == nullptr);
-		return hr;
-	}
-
 	if (FAILED(hr))
 	{
 		reshade::log::message(reshade::log::level::warning, "D3D11On12CreateDevice failed with error code %s.", reshade::log::hr_to_string(hr).c_str());
 		return hr;
 	}
 
-	reshade::log::message(reshade::log::level::info, "Using feature level %x.", feature_level);
+	if (pChosenFeatureLevel != nullptr) // Copy feature level value to application variable if the argument exists
+		*pChosenFeatureLevel = FeatureLevel;
+
+	reshade::log::message(reshade::log::level::info, "Using feature level %x.", FeatureLevel);
+
+	// It is valid for the device out parameter to be NULL if the application wants to check feature level support, so just return early in that case
+	if (ppDevice == nullptr)
+	{
+		assert(ppImmediateContext == nullptr);
+		return hr;
+	}
 
 	auto device = *ppDevice;
 	// Query for the DXGI device, D3D11on12 device and immediate device context since we need to reference them in the proxy device
 	com_ptr<IDXGIDevice1> dxgi_device;
 	hr = device->QueryInterface(&dxgi_device);
 	assert(SUCCEEDED(hr));
-
-	com_ptr<IDXGIFactory> factory;
-	com_ptr<IDXGIAdapter> adapter;
-	hr = dxgi_device->GetAdapter(&adapter);
-	assert(SUCCEEDED(hr));
-	hr = adapter->GetParent(IID_PPV_ARGS(&factory));
-	assert(SUCCEEDED(hr));
-
-	// Only create proxy factory when not using vtable hooking for 'IDXGIFactory::CreateSwapChain'
-	if (!reshade::hooks::is_hooked(reshade::hooks::vtable_from_instance(factory.get()) + 10))
-	{
-		factory = com_ptr<IDXGIFactory>(new DXGIFactory(factory.release()), true);
-		adapter = com_ptr<IDXGIAdapter>(new DXGIAdapter(factory.get(), adapter.release()), true);
-	}
 
 	ID3D11On12Device *d3d11on12_device = nullptr;
 	hr = device->QueryInterface(&d3d11on12_device);
@@ -104,7 +87,7 @@ extern "C" HRESULT WINAPI D3D11On12CreateDevice(IUnknown *pDevice, UINT Flags, C
 	ID3D11DeviceContext *device_context = nullptr;
 	device->GetImmediateContext(&device_context);
 
-	const auto device_proxy = new D3D11Device(adapter.get(), dxgi_device.get(), device);
+	const auto device_proxy = new D3D11Device(dxgi_device.get(), device);
 	device_proxy->_d3d11on12_device = new D3D11On12Device(device_proxy, device_proxy_12.get(), d3d11on12_device);
 	device_proxy->_immediate_context = new D3D11DeviceContext(device_proxy, device_context);
 

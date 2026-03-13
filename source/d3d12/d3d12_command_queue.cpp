@@ -8,7 +8,6 @@
 #include "d3d12_command_queue.hpp"
 #include "d3d12_command_queue_downlevel.hpp"
 #include "dll_log.hpp"
-#include "com_utils.hpp"
 #include "addon_manager.hpp"
 
 D3D12CommandQueue::D3D12CommandQueue(D3D12Device *device, ID3D12CommandQueue *original) :
@@ -42,8 +41,7 @@ bool D3D12CommandQueue::check_and_upgrade_interface(REFIID riid)
 		return true;
 
 	static constexpr IID iid_lookup[] = {
-		__uuidof(ID3D12CommandQueue),  // {0EC870A6-5D7E-4C22-8CFC-5BAAE07616ED}
-		__uuidof(ID3D12CommandQueue1), // {3A3C3165-0EE7-4B8E-A0AF-6356B4c3BBB9}
+		__uuidof(ID3D12CommandQueue),
 	};
 
 	for (unsigned short version = 0; version < ARRAYSIZE(iid_lookup); ++version)
@@ -82,28 +80,17 @@ HRESULT STDMETHODCALLTYPE D3D12CommandQueue::QueryInterface(REFIID riid, void **
 		return S_OK;
 	}
 
-	// Interface ID to query the original object from a proxy object
-	if (riid == IID_UnwrappedObject)
-	{
-		_orig->AddRef();
-		*ppvObj = _orig;
-		return S_OK;
-	}
-
 	// Special case for d3d12on7
-	if (riid == __uuidof(ID3D12CommandQueueDownlevel)) // {38A8C5EF-7CCB-4E81-914F-A6E9D072C494}
+	if (riid == __uuidof(ID3D12CommandQueueDownlevel))
 	{
-		if (_downlevel == nullptr)
-		{
-			// Not a 'com_ptr' since D3D12CommandQueueDownlevel will take ownership
-			ID3D12CommandQueueDownlevel *downlevel = nullptr;
-			if (SUCCEEDED(_orig->QueryInterface(&downlevel)))
-				_downlevel = new D3D12CommandQueueDownlevel(this, downlevel);
-		}
+		if (ID3D12CommandQueueDownlevel *downlevel = nullptr; // Not a 'com_ptr' since D3D12CommandQueueDownlevel will take ownership
+			_downlevel == nullptr && SUCCEEDED(_orig->QueryInterface(&downlevel)))
+			_downlevel = new D3D12CommandQueueDownlevel(this, downlevel);
 
 		if (_downlevel != nullptr)
 			return _downlevel->QueryInterface(riid, ppvObj);
-		return E_NOINTERFACE;
+		else
+			return E_NOINTERFACE;
 	}
 
 	return _orig->QueryInterface(riid, ppvObj);
@@ -240,29 +227,4 @@ HRESULT STDMETHODCALLTYPE D3D12CommandQueue::GetClockCalibration(UINT64 *pGpuTim
 D3D12_COMMAND_QUEUE_DESC STDMETHODCALLTYPE D3D12CommandQueue::GetDesc()
 {
 	return _orig->GetDesc();
-}
-
-HRESULT STDMETHODCALLTYPE D3D12CommandQueue::SetProcessPriority(D3D12_COMMAND_QUEUE_PROCESS_PRIORITY Priority)
-{
-	assert(_interface_version >= 1);
-
-	return static_cast<ID3D12CommandQueue1 *>(_orig)->SetProcessPriority(Priority);
-}
-HRESULT STDMETHODCALLTYPE D3D12CommandQueue::GetProcessPriority(D3D12_COMMAND_QUEUE_PROCESS_PRIORITY *pOutValue)
-{
-	assert(_interface_version >= 1);
-
-	return static_cast<ID3D12CommandQueue1 *>(_orig)->GetProcessPriority(pOutValue);
-}
-HRESULT STDMETHODCALLTYPE D3D12CommandQueue::SetGlobalPriority(D3D12_COMMAND_QUEUE_GLOBAL_PRIORITY Priority)
-{
-	assert(_interface_version >= 1);
-
-	return static_cast<ID3D12CommandQueue1 *>(_orig)->SetGlobalPriority(Priority);
-}
-HRESULT STDMETHODCALLTYPE D3D12CommandQueue::GetGlobalPriority(D3D12_COMMAND_QUEUE_GLOBAL_PRIORITY *pOutValue)
-{
-	assert(_interface_version >= 1);
-
-	return static_cast<ID3D12CommandQueue1 *>(_orig)->GetGlobalPriority(pOutValue);
 }

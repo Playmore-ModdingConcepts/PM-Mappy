@@ -7,6 +7,7 @@
 #include "runtime_manager.hpp"
 #include "ini_file.hpp"
 #include <cassert>
+#include <shared_mutex>
 #include <unordered_set>
 
 static std::shared_mutex s_runtime_config_names_mutex;
@@ -20,7 +21,7 @@ void reshade::create_effect_runtime(api::swapchain *swapchain, api::command_queu
 	assert((graphics_queue->get_type() & api::command_queue_type::graphics) != 0);
 
 	// Try to find a unique configuration name for this effect runtime instance
-	std::string config_name = "ReShade";
+	std::string config_name = "Mappy";
 	if (vr)
 		config_name += "VR";
 	{
@@ -40,7 +41,7 @@ void reshade::create_effect_runtime(api::swapchain *swapchain, api::command_queu
 		s_runtime_config_names.insert(config_name);
 	}
 
-	const ini_file &config = ini_file::load_cache(g_reshade_base_path / std::filesystem::u8path(config_name + ".ini"));
+	const ini_file &config = ini_file::load_cache(g_reshade_base_path);
 	if (config.get("GENERAL", "Disable"))
 		return;
 

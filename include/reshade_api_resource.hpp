@@ -26,7 +26,7 @@
 
 #include "reshade_api_format.hpp"
 
-namespace reshade::api
+namespace reshade { namespace api
 {
 	/// <summary>
 	/// Comparison operations.
@@ -161,39 +161,14 @@ namespace reshade::api
 	/// </summary>
 	enum class memory_heap : uint32_t
 	{
-		/// <summary>
-		/// Usually indicates a resource that is reserved, but not yet bound to any memory.
-		/// </summary>
-		unknown,
-		/// <summary>
-		/// The default heap, which the GPU can read and write, but the CPU does not have access.
-		/// </summary>
-		default_,
-		/// <summary>
-		/// This heap has CPU access optimized for uploading to the GPU.
-		/// </summary>
-		upload,
-		/// <summary>
-		/// This heap has CPU access optimized for reading data back from the GPU.
-		/// </summary>
-		readback,
-		/// <summary>
-		/// This heap has custom properties not covered by the other types.
-		/// </summary>
-		custom = 5,
-		/// <summary>
-		/// This heap is only accessible by the CPU.
-		/// </summary>
-		scratch = 4,
-		/// <summary>
-		/// CPU visible GPU memory, when available via Resizable BAR.
-		/// </summary>
-		gpu_upload = 6,
-
-		gpu_only = default_,
-		cpu_to_gpu = upload,
-		gpu_to_cpu = readback,
-		cpu_only = scratch
+		unknown, // Usually indicates a resource that is reserved, but not yet bound to any memory.
+		gpu_only,
+		// Upload heap
+		cpu_to_gpu,
+		// Readback heap
+		gpu_to_cpu,
+		cpu_only,
+		custom
 	};
 
 	/// <summary>
@@ -221,11 +196,6 @@ namespace reshade::api
 		/// Required for <see cref="map_access::write_discard"/>. The flag is not supported in D3D12 or Vulkan.
 		/// </summary>
 		dynamic = (1 << 3),
-		/// <summary>
-		/// Immutable resources can never be written to again after creationn, either by the CPU or the GPU.
-		/// The flag is only supported in D3D10 and D3D11.
-		/// </summary>
-		immutable = (1 << 4),
 		/// <summary>
 		/// Required to create <see cref="resource_view_type::texture_cube"/> or <see cref="resource_view_type::texture_cube_array"/> views of the resource.
 		/// </summary>
@@ -750,4 +720,4 @@ namespace reshade::api
 		/// </summary>
 		acceleration_structure_build_input_flags flags = acceleration_structure_build_input_flags::none;
 	};
-}
+} }

@@ -553,37 +553,22 @@ namespace reshade
 		/// <list type="bullet">
 		/// <item><description>ID3D10Device::UpdateSubresource</description></item>
 		/// <item><description>ID3D11DeviceContext::UpdateSubresource</description></item>
-		/// <item><description>ID3D11DeviceContext1::UpdateSubresource1</description></item>
 		/// <item><description>glBufferSubData</description></item>
 		/// <item><description>glNamedBufferSubData</description></item>
 		/// </list>
 		/// <para>Callback function signature: <c>bool (api::device *device, const void *data, api::resource resource, uint64_t offset, uint64_t size)</c></para>
 		/// </summary>
 		/// <remarks>
-		/// To prevent this action from being executed, return <see langword="true"/>, otherwise return <see langword="false"/>.
-		/// </remarks>
-		update_buffer_region = 24,
-		/// <summary>
-		/// Called before:
-		/// <list type="bullet">
-		/// <item><description>ID3D11DeviceContext::UpdateSubresource (on deferred device contexts)</description></item>
-		/// <item><description>ID3D11DeviceContext1::UpdateSubresource1 (on deferred device contexts)</description></item>
-		/// <item><description>vkCmdUpdateBuffer</description></item>
-		/// </list>
-		/// <para>Callback function signature: <c>bool (api::command_list *cmd_list, const void *data, api::resource dest, uint64_t dest_offset, uint64_t size)</c></para>
-		/// </summary>
-		/// <remarks>
 		/// To prevent this command from being executed, return <see langword="true"/>, otherwise return <see langword="false"/>.
 		/// Destination resource will be in the <see cref="api::resource_usage::copy_dest"/> state.
 		/// </remarks>
-		update_buffer_region_command = 98,
+		update_buffer_region,
 
 		/// <summary>
 		/// Called before:
 		/// <list type="bullet">
 		/// <item><description>ID3D10Device::UpdateSubresource</description></item>
 		/// <item><description>ID3D11DeviceContext::UpdateSubresource</description></item>
-		/// <item><description>ID3D11DeviceContext1::UpdateSubresource1</description></item>
 		/// <item><description>glTexSubData1D</description></item>
 		/// <item><description>glTexSubData2D</description></item>
 		/// <item><description>glTexSubData3D</description></item>
@@ -600,22 +585,10 @@ namespace reshade
 		/// <para>Callback function signature: <c>bool (api::device *device, const api::subresource_data &amp;data, api::resource resource, uint32_t subresource, const api::subresource_box *box)</c></para>
 		/// </summary>
 		/// <remarks>
-		/// To prevent this action from being executed, return <see langword="true"/>, otherwise return <see langword="false"/>.
-		/// </remarks>
-		update_texture_region = 25,
-		/// <summary>
-		/// Called before:
-		/// <list type="bullet">
-		/// <item><description>ID3D11DeviceContext::UpdateSubresource (on deferred device contexts)</description></item>
-		/// <item><description>ID3D11DeviceContext1::UpdateSubresource1 (on deferred device contexts)</description></item>
-		/// </list>
-		/// <para>Callback function signature: <c>bool (api::command_list *cmd_list, const api::subresource_data &amp;data, api::resource dest, uint32_t dest_subresource, const api::subresource_box *dest_box)</c></para>
-		/// </summary>
-		/// <remarks>
 		/// To prevent this command from being executed, return <see langword="true"/>, otherwise return <see langword="false"/>.
 		/// Destination resource will be in the <see cref="api::resource_usage::copy_dest"/> state.
 		/// </remarks>
-		update_texture_region_command = 99,
+		update_texture_region,
 
 		/// <summary>
 		/// Called after successful pipeline creation from:
@@ -663,7 +636,7 @@ namespace reshade
 		/// <remarks>
 		/// May be called multiple times with the same pipeline handle (whenever the pipeline is updated or its reference count is incremented).
 		/// </remarks>
-		init_pipeline = 26,
+		init_pipeline,
 
 		/// <summary>
 		/// Called on pipeline creation, before:
@@ -1063,8 +1036,8 @@ namespace reshade
 		/// <item><description>glBindImageTextures</description></item>
 		/// <item><description>glBindTextureUnit</description></item>
 		/// <item><description>glBindMultiTextureEXT</description></item>
-		/// <item><description>vkCmdPushDescriptorSet</description></item>
-		/// <item><description>vkCmdPushDescriptorSetWithTemplate</description></item>
+		/// <item><description>vkCmdPushDescriptorSetKHR</description></item>
+		/// <item><description>vkCmdPushDescriptorSetWithTemplateKHR</description></item>
 		/// </list>
 		/// <para>Callback function signature: <c>void (api::command_list *cmd_list, api::shader_stage stages, api::pipeline_layout layout, uint32_t layout_param, const api::descriptor_table_update &amp;update)</c></para>
 		/// </summary>
@@ -1153,7 +1126,6 @@ namespace reshade
 		/// <item><description>glDrawArraysInstancedBaseInstance</description></item>
 		/// <item><description>glMultiDrawArrays</description></item>
 		/// <item><description>vkCmdDraw</description></item>
-		/// <item><description>vkCmdDrawMultiEXT</description></item>
 		/// </list>
 		/// <para>Callback function signature: <c>bool (api::command_list *cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)</c></para>
 		/// </summary>
@@ -1181,7 +1153,6 @@ namespace reshade
 		/// <item><description>glMultiDrawElements</description></item>
 		/// <item><description>glMultiDrawElementsBaseVertex</description></item>
 		/// <item><description>vkCmdDrawIndexed</description></item>
-		/// <item><description>vkCmdDrawMultiIndexedEXT</description></item>
 		/// </list>
 		/// <para>Callback function signature: <c>bool (api::command_list *cmd_list, uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance)</c></para>
 		/// </summary>
@@ -1279,8 +1250,6 @@ namespace reshade
 		/// <summary>
 		/// Called before:
 		/// <list type="bullet">
-		/// <item><description>ID3D11DeviceContext::CopySubresourceRegion</description></item>
-		/// <item><description>ID3D11DeviceContext1::CopySubresourceRegion1</description></item>
 		/// <item><description>ID3D12GraphicsCommandList::CopyBufferRegion</description></item>
 		/// <item><description>glCopyBufferSubData</description></item>
 		/// <item><description>glCopyNamedBufferSubData</description></item>
@@ -1320,7 +1289,6 @@ namespace reshade
 		/// <item><description>IDirect3DDevice9::StretchRect</description></item>
 		/// <item><description>ID3D10Device::CopySubresourceRegion</description></item>
 		/// <item><description>ID3D11DeviceContext::CopySubresourceRegion</description></item>
-		/// <item><description>ID3D11DeviceContext1::CopySubresourceRegion1</description></item>
 		/// <item><description>ID3D12GraphicsCommandList::CopyTextureRegion</description></item>
 		/// <item><description>glBlitFramebuffer</description></item>
 		/// <item><description>glBlitNamedFramebuffer</description></item>
@@ -1562,7 +1530,6 @@ namespace reshade
 		/// <summary>
 		/// Called before:
 		/// <list type="bullet">
-		/// <item><description>ID3D11DeviceContext::FinishCommandList</description></item>
 		/// <item><description>ID3D12GraphicsCommandList::Reset</description></item>
 		/// <item><description>vkBeginCommandBuffer</description></item>
 		/// </list>
@@ -1637,21 +1604,6 @@ namespace reshade
 		/// The source and destination rectangle arguments are optional and may be <see langword="nullptr"/> (which indicates the swap chain is presented in its entirety).
 		/// </remarks>
 		present,
-		/// <summary>
-		/// Called after successful presentation, from:
-		/// <list type="bullet">
-		/// <item><description>IDirect3DDevice9::Present</description></item>
-		/// <item><description>IDirect3DDevice9Ex::PresentEx</description></item>
-		/// <item><description>IDirect3DSwapChain9::Present</description></item>
-		/// <item><description>IDXGISwapChain::Present</description></item>
-		/// <item><description>IDXGISwapChain3::Present1</description></item>
-		/// <item><description>ID3D12CommandQueueDownlevel::Present</description></item>
-		/// <item><description>wglSwapBuffers</description></item>
-		/// <item><description>vkQueuePresentKHR</description></item>
-		/// </list>
-		/// <para>Callback function signature: <c>void (api::command_queue *queue, api::swapchain *swapchain)</c></para>
-		/// </summary>
-		finish_present = 100,
 
 		/// <summary>
 		/// Called before:
@@ -1788,7 +1740,7 @@ namespace reshade
 		reshade_overlay_technique,
 
 #if RESHADE_ADDON
-		max = 101 // Last value used internally by ReShade to determine number of events in this enum
+		max = 98 // Last value used internally by ReShade to determine number of events in this enum
 #endif
 	};
 
@@ -1836,8 +1788,8 @@ namespace reshade
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::map_texture_region, void, api::device *device, api::resource resource, uint32_t subresource, const api::subresource_box *box, api::map_access access, api::subresource_data *data);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::unmap_texture_region, void, api::device *device, api::resource resource, uint32_t subresource);
 
-	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::update_buffer_region, bool, api::device *device, const void *data, api::resource dest, uint64_t dest_offset, uint64_t size);
-	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::update_texture_region, bool, api::device *device, const api::subresource_data &data, api::resource dest, uint32_t dest_subresource, const api::subresource_box *dest_box);
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::update_buffer_region, bool, api::device *device, const void *data, api::resource resource, uint64_t offset, uint64_t size);
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::update_texture_region, bool, api::device *device, const api::subresource_data &data, api::resource resource, uint32_t subresource, const api::subresource_box *box);
 
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::init_pipeline, void, api::device *device, api::pipeline_layout layout, uint32_t subobject_count, const api::pipeline_subobject *subobjects, api::pipeline pipeline);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::create_pipeline, bool, api::device *device, api::pipeline_layout layout, uint32_t subobject_count, const api::pipeline_subobject *subobjects);
@@ -1902,9 +1854,6 @@ namespace reshade
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::build_acceleration_structure, bool, api::command_list *cmd_list, api::acceleration_structure_type type, api::acceleration_structure_build_flags flags, uint32_t input_count, const api::acceleration_structure_build_input *inputs, api::resource scratch, uint64_t scratch_offset, api::resource_view source, api::resource_view dest, api::acceleration_structure_build_mode mode);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::query_acceleration_structures, bool, api::command_list *cmd_list, uint32_t count, const api::resource_view *acceleration_structures, api::query_heap heap, api::query_type type, uint32_t first);
 
-	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::update_buffer_region_command, bool, api::command_list *cmd_list, const void *data, api::resource dest, uint64_t dest_offset, uint64_t size);
-	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::update_texture_region_command, bool, api::command_list *cmd_list, const api::subresource_data &data, api::resource dest, uint32_t dest_subresource, const api::subresource_box *dest_box);
-
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::reset_command_list, void, api::command_list *cmd_list);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::close_command_list, void, api::command_list *cmd_list);
 
@@ -1912,7 +1861,6 @@ namespace reshade
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::execute_secondary_command_list, void, api::command_list *cmd_list, api::command_list *secondary_cmd_list);
 
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::present, void, api::command_queue *queue, api::swapchain *swapchain, const api::rect *source_rect, const api::rect *dest_rect, uint32_t dirty_rect_count, const api::rect *dirty_rects);
-	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::finish_present, void, api::command_queue *queue, api::swapchain *swapchain);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::set_fullscreen_state, bool, api::swapchain *swapchain, bool fullscreen, void *hmonitor);
 
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::reshade_present, void, api::effect_runtime *runtime);

@@ -66,7 +66,7 @@ void dump_and_modify_present_parameters(D3DPRESENT_PARAMETERS &pp, [[maybe_unuse
 	desc.back_buffer.texture.depth_or_layers = 1;
 	desc.back_buffer.texture.levels = 1;
 	desc.back_buffer.texture.format = reshade::d3d9::convert_format(pp.BackBufferFormat);
-	desc.back_buffer.heap = reshade::api::memory_heap::default_;
+	desc.back_buffer.heap = reshade::api::memory_heap::gpu_only;
 	desc.back_buffer.usage = reshade::api::resource_usage::render_target;
 
 	if (pp.MultiSampleType >= D3DMULTISAMPLE_2_SAMPLES)
@@ -80,17 +80,12 @@ void dump_and_modify_present_parameters(D3DPRESENT_PARAMETERS &pp, [[maybe_unuse
 
 	if (pp.Windowed)
 	{
-		// If either the width or height are zero, then the swap chain will be sized to the current window size
-		if (pp.BackBufferWidth == 0 || pp.BackBufferHeight == 0)
-		{
-			RECT window_rect = {};
-			GetClientRect(window, &window_rect);
-
+		RECT window_rect = {};
+		GetClientRect(window, &window_rect);
+		if (pp.BackBufferWidth == 0)
 			desc.back_buffer.texture.width = window_rect.right;
+		if (pp.BackBufferHeight == 0)
 			desc.back_buffer.texture.height = window_rect.bottom;
-
-			assert(desc.back_buffer.texture.width != 0 && desc.back_buffer.texture.height != 0);
-		}
 
 		if (D3DDISPLAYMODE current_mode;
 			pp.BackBufferFormat == D3DFMT_UNKNOWN &&
@@ -100,7 +95,7 @@ void dump_and_modify_present_parameters(D3DPRESENT_PARAMETERS &pp, [[maybe_unuse
 		}
 	}
 
-	desc.back_buffer_count = pp.BackBufferCount != 0 ? pp.BackBufferCount : 1;
+	desc.back_buffer_count = pp.BackBufferCount;
 	desc.present_mode = pp.SwapEffect;
 	desc.present_flags = pp.Flags;
 	desc.fullscreen_state = pp.Windowed == FALSE;
@@ -117,8 +112,10 @@ void dump_and_modify_present_parameters(D3DPRESENT_PARAMETERS &pp, [[maybe_unuse
 	else if ((pp.PresentationInterval & D3DPRESENT_INTERVAL_FOUR) != 0)
 		desc.sync_interval = 4;
 	else
-		assert(pp.PresentationInterval == D3DPRESENT_INTERVAL_DEFAULT),
+	{
+		assert(pp.PresentationInterval == D3DPRESENT_INTERVAL_DEFAULT);
 		desc.sync_interval = UINT32_MAX;
+	}
 
 	if (reshade::invoke_addon_event<reshade::addon_event::create_swapchain>(reshade::api::device_api::d3d9, desc, window))
 	{
@@ -248,9 +245,11 @@ static void init_device_proxy(T *&device, D3DDEVTYPE device_type, HWND device_wi
 	// Check if this device was created via D3D9on12 and hook it too if so
 	init_device_proxy_for_d3d9on12(device_proxy);
 
+#if 1
 	// Upgrade to extended interface if available to prevent compatibility issues with some games
 	com_ptr<IDirect3DDevice9Ex> deviceex;
 	device_proxy->QueryInterface(IID_PPV_ARGS(&deviceex));
+#endif
 
 #if RESHADE_VERBOSE_LOG
 	reshade::log::message(
@@ -441,7 +440,7 @@ extern "C" IDirect3D9 *WINAPI Direct3DCreate9(UINT SDKVersion)
 		return nullptr;
 	}
 
-	reshade::hooks::install("IDirect3D9::CreateDevice", reshade::hooks::vtable_from_instance(res), 16, &IDirect3D9_CreateDevice);
+	reshade::hooks::install("IDirect3D9::CreateDevice", reshade::hooks::vtable_from_instance(res), 16, reinterpret_cast<reshade::hook::address>(&IDirect3D9_CreateDevice));
 
 #if RESHADE_VERBOSE_LOG
 	reshade::log::message(reshade::log::level::debug, "Returning IDirect3D9 object %p.", res);
@@ -470,8 +469,8 @@ extern "C"     HRESULT WINAPI Direct3DCreate9Ex(UINT SDKVersion, IDirect3D9Ex **
 
 	assert(ppD3D != nullptr);
 
-	reshade::hooks::install("IDirect3D9Ex::CreateDevice", reshade::hooks::vtable_from_instance(*ppD3D), 16, &IDirect3D9_CreateDevice);
-	reshade::hooks::install("IDirect3D9Ex::CreateDeviceEx", reshade::hooks::vtable_from_instance(*ppD3D), 20, &IDirect3D9Ex_CreateDeviceEx);
+	reshade::hooks::install("IDirect3D9Ex::CreateDevice", reshade::hooks::vtable_from_instance(*ppD3D), 16, reinterpret_cast<reshade::hook::address>(&IDirect3D9_CreateDevice));
+	reshade::hooks::install("IDirect3D9Ex::CreateDeviceEx", reshade::hooks::vtable_from_instance(*ppD3D), 20, reinterpret_cast<reshade::hook::address>(&IDirect3D9Ex_CreateDeviceEx));
 
 #if RESHADE_VERBOSE_LOG
 	reshade::log::message(reshade::log::level::debug, "Returning IDirect3D9Ex object %p.", *ppD3D);

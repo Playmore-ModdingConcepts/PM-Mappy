@@ -10,7 +10,6 @@
 #include <string_view>
 #include <vector>
 #include <unordered_map>
-#include <cstdint>
 
 struct ImFont;
 struct ImDrawData;
@@ -86,8 +85,7 @@ namespace reshade::imgui
 		/// <param name="palette">Color palette used for syntax highlighting.</param>
 		/// <param name="border">Set to <see langword="true"/> to surround the child window with a border line.</param>
 		/// <param name="font">Font used for rendering the text (<see langword="nullptr"/> to use the default).</param>
-		/// <param name="font_size">Font size used for rendering the text (or zero to use the current font size).</param>
-		void render(const char *title, const uint32_t palette[color_palette_max], bool border = false, ImFont *font = nullptr, float font_size = 0.0f);
+		void render(const char *title, const uint32_t palette[color_palette_max], bool border = false, ImFont *font = nullptr);
 
 		/// <summary>
 		/// Sets the selection to be between the specified <paramref name="beg"/>in and <paramref name="end"/> positions.
@@ -123,9 +121,9 @@ namespace reshade::imgui
 		/// </summary>
 		void clear_text();
 		/// <summary>
-		/// Inserts the specified <paramref name="text"/> at the end.
+		/// Inserts the specified <paramref name="text"/> at the cursor position.
 		/// </summary>
-		void append_text(const std::string_view text);
+		void insert_text(const std::string_view text);
 		/// <summary>
 		/// Returns the entire text of this text editor as a string.
 		/// </summary>
@@ -207,12 +205,6 @@ namespace reshade::imgui
 		/// <param name="col">Color to use.</param>
 		void colorize(const text_pos &beg, const text_pos &end, color col);
 
-		/// <summary>
-		/// Returns the position at the end of the current text of this text editor.
-		/// </summary>
-		/// <returns></returns>
-		text_pos get_text_end() const { return _lines.size() - 1; }
-
 	private:
 		struct glyph
 		{
@@ -232,7 +224,6 @@ namespace reshade::imgui
 
 		void record_undo(undo_record &&record);
 
-		void insert_text(const std::string_view text);
 		void insert_character(uint32_t c, bool auto_indent);
 
 		void delete_next();
@@ -289,7 +280,6 @@ namespace reshade::imgui
 		char _search_text[256] = "";
 		char _replace_text[256] = "";
 		bool _search_case_sensitive = false;
-		bool _search_whole_word = false;
 
 		size_t _colorize_line_beg = 0;
 		size_t _colorize_line_end = 0;

@@ -2,9 +2,9 @@ Param(
 	[Parameter(Mandatory = $true)][string]
 	$path,
 	[string]
-	$config = "",
+	$config = "Release",
 	[string]
-	$platform = ""
+	$platform = "x64"
 )
 
 $exists = Test-Path $path
@@ -18,8 +18,6 @@ elseif ($(git describe --tags) -match "v(\d+)\.(\d+)\.(\d+)(-\d+-\w+)?") {
 	$version = [int]::Parse($matches[1]), [int]::Parse($matches[2]), [int]::Parse($matches[3]), 0
 }
 
-$global:ReShadeVersion = $version
-
 # Increment build version for release builds
 if (($config -eq "Release") -or
     ($config -eq "Release Signed")) {
@@ -30,7 +28,7 @@ elseif ($exists) {
 	return
 }
 
-$official = Test-Path "$path\..\sign.pfx"
+$official = Test-Path ($path + "\..\sign.pfx")
 
 # Update version file with the new version information
 @"
