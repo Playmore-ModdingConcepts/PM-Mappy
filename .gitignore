@@ -1,45 +1,12 @@
-# Build results
-[Bb]in/
-[Oo]bj/
-[Ii]ntermediate/
-[Bb]uild/
-[Dd]ebug/
-[Rr]elease/
-*.obj
-*.cso
-
-# Visual Studio cache files
-.vs/
-ipch/
-packages/
-*.aps
-*.VC.db
-*.VC.opendb
-
-# Visual Studio user config files
-*.sdf
-*.opensdf
-*.suo
-*.vcxproj.user
-*.Args.json
-*.ArgsCfg.json
-
-# Visual Studio performance profiling
-*.vsp
-*.psess
-
-# Visual Studio Code
-.vscode/
-
-# Code signing
-*.pfx
-*.pvk
-
-# Temporary OS files
-.DS_Store
-Thumbs.db
-
-# Versioning and setup files
-/res/[Vv]ersion.h
-/setup/*.ini
-/setup/Properties/AssemblyInfo.cs
+.vs/*
+UE4L/Release/*
+UE4L/x64/Release/*
+UE4L/x64/Debug/*
+UE4L/.vs/*
+x64/Release/*
+UE4L/UE4L.vcxproj/*
+UE4L/UE4L.vcxproj.filters/*
+UE4L/UE4L.vcxproj.user/*
+UE4L/UE4L.user/*
+UE4L/UE4L.filters/*
+UE4L/Clock/*
